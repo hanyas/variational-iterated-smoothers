@@ -1,103 +1,90 @@
 import jax
 from jax import numpy as jnp
+from jax import scipy as jsc
 
-from varsmooth.objects import StdGaussian, StdLinearGaussian
+from varsmooth.objects import Gaussian, AffineGaussian
 from varsmooth.utils import none_or_concat, none_or_shift
 
 
 def filtering(
     observations: jnp.ndarray,
-    initial_dist: StdGaussian,
-    linear_transition: StdLinearGaussian,
-    linear_observation: StdLinearGaussian,
+    prior_dist: Gaussian,
+    linear_transition: AffineGaussian,
+    linear_observation: AffineGaussian,
 ):
-    def _predict(F, b, Q, x):
-        m, P = x
+    def _predict(F, b, Omega, q):
+        m, P = q
 
         m = F @ m + b
-        P = Q + F @ P @ F.T
-        return StdGaussian(m, P)
+        P = Omega + F @ P @ F.T
+        return Gaussian(m, P)
 
-    def _update(H, c, R, x, y):
-        m, P = x
+    def _update(H, e, Delta, q, y):
+        m, P = q
 
-        S = R + H @ P @ H.T
-        G = jnp.linalg.solve(S.T, H @ P.T).T
+        S = Delta + H @ P @ H.T
+        G = jsc.linalg.solve(S.T, H @ P.T).T
 
-        y_hat = H @ m + c
-        y_diff = y - y_hat
-        m = m + G @ y_diff
+        m = m + G @ (y - H @ m - e)
         P = P - G @ S @ G.T
-        return StdGaussian(m, P)
+        return Gaussian(m, P)
 
     def body(carry, args):
-        xf = carry
-        y, lt, lo = args
+        qf = carry
+        y, (A, b, Omega), (H, e, Delta) = args
 
-        F, b, Q = lt
-        H, c, R = lo
+        qp = _predict(A, b, Omega, qf)
+        qf = _update(H, e, Delta, qp, y)
+        return qf, qf
 
-        xp = _predict(F, b, Q, xf)
-        xf = _update(H, c, R, xp, y)
-        return xf, xf
-
-    x0 = initial_dist
-    ys = observations
-
-    lts = linear_transition
-    los = linear_observation
-
-    _, Xf = jax.lax.scan(body, x0, (ys, lts, los))
-    return none_or_concat(Xf, x0, 1)
+    _, filter_marginals = jax.lax.scan(
+        body,
+        prior_dist,
+        (observations, linear_transition, linear_observation)
+    )
+    return none_or_concat(filter_marginals, prior_dist, 1)
 
 
 def smoothing(
-    linear_transition: StdLinearGaussian,
-    filter_trajectory: StdGaussian,
+    linear_transition: AffineGaussian,
+    filter_trajectory: Gaussian,
 ):
-    def _smooth(F, b, Q, xf, xs):
-        mf, Pf = xf
-        ms, Ps = xs
+    def _smooth(F, b, Omega, qf, qs):
+        mf, Pf = qf
+        ms, Ps = qs
 
-        mean_diff = ms - (b + F @ mf)
-        S = F @ Pf @ F.T + Q
-        cov_diff = Ps - S
+        S = F @ Pf @ F.T + Omega
 
         gain = Pf @ jnp.linalg.solve(S, F).T
-        ms = mf + gain @ mean_diff
-        Ps = Pf + gain @ cov_diff @ gain.T
-        return StdGaussian(ms, Ps)
+        ms = mf + gain @ (ms - b - F @ mf)
+        Ps = Pf + gain @ (Ps - S) @ gain.T
+        return Gaussian(ms, Ps)
 
     def body(carry, args):
-        xs = carry
-        xf, lt = args
+        qs = carry
+        qf, (F, b, Omega) = args
 
-        F, b, Q = lt
-        xs = _smooth(F, b, Q, xf, xs)
-        return xs, xs
+        qs = _smooth(F, b, Omega, qf, qs)
+        return qs, qs
 
-    xl = jax.tree_map(lambda z: z[-1], filter_trajectory)
+    last_marginal = jax.tree_map(lambda z: z[-1], filter_trajectory)
+    rest_marginals = none_or_shift(filter_trajectory, -1)
 
-    Xf = none_or_shift(filter_trajectory, -1)
-    lts = linear_transition
-
-    _, Xs = jax.lax.scan(
+    _, smoothed_marginals = jax.lax.scan(
         body,
-        xl,
-        (Xf, lts),
-        reverse=True,
+        last_marginal,
+        (rest_marginals, linear_transition),
+        reverse=True
     )
-
-    Xs = none_or_concat(Xs, xl, -1)
-    return Xs
+    return none_or_concat(smoothed_marginals, last_marginal, -1)
 
 
 def rts_smoother(
-        observations: jnp.ndarray,
-        initial_dist: StdGaussian,
-        linear_transition: StdLinearGaussian,
-        linear_observation: StdLinearGaussian,
-) -> StdGaussian:
+    observations: jnp.ndarray,
+    prior_dist: Gaussian,
+    linear_transition: AffineGaussian,
+    linear_observation: AffineGaussian,
+) -> Gaussian:
 
-    filtered = filtering(observations, initial_dist, linear_transition, linear_observation)
-    return smoothing(linear_transition, filtered)
+    filter_trajectory = filtering(observations, prior_dist, linear_transition, linear_observation)
+    return smoothing(linear_transition, filter_trajectory)

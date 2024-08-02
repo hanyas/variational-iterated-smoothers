@@ -1,22 +1,21 @@
 import numpy as np
 
-from varsmooth.objects import StdGaussian, SqrtGaussian
+from varsmooth.objects import Gaussian
 
 
-def get_system(dim_x, dim_y):
+def generate_system(dim_x, dim_y):
     m = np.random.randn(dim_x)
-    cholP = np.random.rand(dim_x, dim_x)
-    cholP[np.triu_indices(dim_x, 1)] = 0.
-    P = cholP @ cholP.T
+    chol_P = np.random.rand(dim_x, dim_x)
+    chol_P[np.triu_indices(dim_x, 1)] = 0.
+    P = chol_P @ chol_P.T
 
-    cholR = np.random.rand(dim_y, dim_y)
-    cholR[np.triu_indices(dim_y, 1)] = 0.
-    R = cholR @ cholR.T
+    chol_covar = np.random.rand(dim_y, dim_y)
+    chol_covar[np.triu_indices(dim_y, 1)] = 0.
+    covar = chol_covar @ chol_covar.T
 
-    H = np.eye(dim_y, dim_x)
-    c = np.random.randn(dim_y)
-    y = np.random.randn(dim_y)
+    mat = np.eye(dim_y, dim_x)
+    offset = np.random.randn(dim_y)
+    vecs = np.random.randn(dim_y)
 
-    chol_x = SqrtGaussian(m, cholP)
-    x = StdGaussian(m, P)
-    return x, chol_x, H, c, R, cholR, y
+    q = Gaussian(m, P)
+    return q, mat, offset, covar, vecs
