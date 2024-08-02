@@ -1,41 +1,80 @@
-import itertools
 from typing import NamedTuple, Callable
 
 import jax.numpy as jnp
 
 
-class StdGaussian(NamedTuple):
+class Gaussian(NamedTuple):
     mean: jnp.ndarray
     cov: jnp.ndarray
 
 
-class SqrtGaussian(NamedTuple):
-    mean: jnp.ndarray
-    cov_chol: jnp.ndarray
-
-
-class FunctionalModel(NamedTuple):
-    func: Callable
-    mvn: StdGaussian
+class AdditiveGaussianModel(NamedTuple):
+    fun: Callable
+    noise: Gaussian
 
 
 class ConditionalMomentsModel(NamedTuple):
-    mean_func: Callable
-    cov_func: Callable
+    mean_fn: Callable
+    cov_fn: Callable
 
 
-class StdLinearGaussian(NamedTuple):
-    mat: jnp.ndarray
-    bias: jnp.ndarray
-    cov: jnp.ndarray
+class AffineGaussian(NamedTuple):
+    F: jnp.ndarray
+    d: jnp.ndarray
+    Sigma: jnp.ndarray
+
+    def logpdf(self, y, x):
+        err = y - self.F @ x - self.d
+        return - 0.5 * err.T @ jnp.linalg.inv(self.Sigma) @ err\
+            - 0.5 * jnp.linalg.slogdet(2.0 * jnp.pi * self.Sigma)[1]
 
 
-class ForwardGaussMarkov(NamedTuple):
-    init: StdGaussian
-    kernels: StdLinearGaussian
+class GaussMarkov(NamedTuple):
+    marginal: Gaussian
+    kernels: AffineGaussian
 
 
 class QuadraticFunction(NamedTuple):
     Vxx: jnp.ndarray
     vx: jnp.ndarray
     v0: jnp.ndarray
+
+
+class Potential(NamedTuple):
+    R: jnp.ndarray
+    r: jnp.ndarray
+    rho: jnp.ndarray
+
+
+class LogConditionalNorm(NamedTuple):
+    S: jnp.ndarray
+    s: jnp.ndarray
+    xi: jnp.ndarray
+
+
+class LogMarginalNorm(NamedTuple):
+    U: jnp.ndarray
+    u: jnp.ndarray
+    nu: jnp.ndarray
+
+
+class LogPrior(NamedTuple):
+    L: jnp.ndarray
+    l: jnp.ndarray
+    eta: jnp.ndarray
+
+
+class LogTransition(NamedTuple):
+    C11: jnp.ndarray
+    C12: jnp.ndarray
+    C21: jnp.ndarray
+    C22: jnp.ndarray
+    c1: jnp.ndarray
+    c2: jnp.ndarray
+    kappa: jnp.ndarray
+
+
+class LogObservation(NamedTuple):
+    L: jnp.ndarray
+    l: jnp.ndarray
+    eta: jnp.ndarray
