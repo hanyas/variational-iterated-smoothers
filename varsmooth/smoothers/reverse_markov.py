@@ -108,7 +108,7 @@ def statistical_expansion(
     return log_prior, log_transition, log_observation
 
 
-def backward_pass(
+def forward_pass(
     log_prior: LogPrior,
     log_transition: LogTransition,
     log_observation: LogObservation,
@@ -116,7 +116,7 @@ def backward_pass(
     beta: float,
 ) -> (GaussMarkov, jnp.ndarray):
 
-    def _backward(carry, args):
+    def _forward(carry, args):
         R, r, rho = carry
         C11, C12, C21, C22, c1, c2, kappa, \
             L, l, eta, \
@@ -124,55 +124,47 @@ def backward_pass(
 
         inv_Sigma = jnp.linalg.inv(Sigma)
 
-        G11 = (1 - beta) * (C11 + R) + beta * inv_Sigma
-        G22 = (1 - beta) * C22 + beta * F.T @ inv_Sigma @ F
-        G12 = (1 - beta) * C12 + beta * inv_Sigma @ F
-        g1 = (1 - beta) * (c1 + r) + beta * inv_Sigma @ d
-        g2 = (1 - beta) * c2 - beta * F.T @ inv_Sigma @ d
+        G11 = (1 - beta) * C11 + beta * F.T @ inv_Sigma @ F
+        G22 = (1 - beta) * (C22 + R) + beta * inv_Sigma
+        G21 = (1 - beta) * C21 + beta * inv_Sigma @ F
+        g1 = (1 - beta) * c1 - beta * F.T @ inv_Sigma @ d
+        g2 = (1 - beta) * (c2 + r) + beta * inv_Sigma @ d
 
         G11 = symmetrize(G11)
         G22 = symmetrize(G22)
 
-        inv_G11 = jnp.linalg.inv(G11)
-        S = G22 - G12.T @ inv_G11 @ G12
-        s = g2 + G12.T @ inv_G11 @ g1
+        inv_G22 = jnp.linalg.inv(G22)
+        S = G11 - G21.T @ inv_G22 @ G21
+        s = g1 + G21.T @ inv_G22 @ g2
 
         R = L + 1 / (1 - beta) * S
         r = l + 1 / (1 - beta) * s
         rho = jnp.zeros((1, ))
 
-        inv_G21 = jnp.linalg.inv(G12.T)
+        inv_G12 = jnp.linalg.inv(G21.T)
 
-        F = inv_G21 @ (G22 - S)
-        d = - inv_G21 @ (g2 - s)
-        Sigma = inv_G21 @ (G22 - S) @ inv_G21.T
+        F = inv_G12 @ (G11 - S)
+        d = - inv_G12 @ (g1 - s)
+        Sigma = inv_G12 @ (G11 - S) @ inv_G12.T
 
         return Potential(R, r, rho), AffineGaussian(F, d, Sigma)
 
-    last_log_observation = none_or_idx(log_observation, -1)
-    last_potential = Potential(
-        R=last_log_observation.L,
-        r=last_log_observation.l,
-        rho=last_log_observation.eta
-    )
-
-    _log_aux_observation = none_or_concat(
-        none_or_shift(log_observation, -1),
-        LogObservation(log_prior.L, log_prior.l, log_prior.eta),
-        1
+    first_potential = Potential(
+        R=log_prior.L,
+        r=log_prior.l,
+        rho=log_prior.eta
     )
 
     nominal_marginal, nominal_kernels = nominal_posterior
 
-    first_potential, kernels = jax.lax.scan(
-        f=_backward,
-        init=last_potential,
-        xs=(*log_transition, *_log_aux_observation, *nominal_kernels),
-        reverse=True,
+    last_potential, kernels = jax.lax.scan(
+        f=_forward,
+        init=first_potential,
+        xs=(*log_transition, *log_observation, *nominal_kernels),
     )
 
-    # get initial marginal
-    R, r, _ = first_potential
+    # get last marginal
+    R, r, _ = last_potential
 
     m, P = nominal_marginal
     inv_P = jnp.linalg.inv(P)
@@ -188,10 +180,10 @@ def backward_pass(
     return GaussMarkov(marginal, kernels)
 
 
-def forward_pass(posterior: GaussMarkov) -> Gaussian:
-    init_marginal, kernels = posterior
+def backward_pass(posterior: GaussMarkov) -> Gaussian:
+    last_marginal, kernels = posterior
 
-    def _forward(carry, args):
+    def _backward(carry, args):
         q = carry
         kernel = args
 
@@ -203,11 +195,11 @@ def forward_pass(posterior: GaussMarkov) -> Gaussian:
         q = Gaussian(m, P)
         return q, q
 
-    _, marginals = jax.lax.scan(_forward, init_marginal, kernels)
-    return none_or_concat(marginals, init_marginal, 1)
+    _, marginals = jax.lax.scan(_backward, last_marginal, kernels, reverse=True)
+    return none_or_concat(marginals, last_marginal, position=-1)
 
 
-def forward_markov_smoother(
+def reverse_markov_smoother(
     observations: jnp.ndarray,
     prior_dist: Gaussian,
     transition_model: AdditiveGaussianModel,
@@ -216,7 +208,7 @@ def forward_markov_smoother(
     beta: float
 ) -> GaussMarkov:
 
-    marginals = forward_pass(nominal_posterior)
+    marginals = backward_pass(nominal_posterior)
 
     log_prior, log_transition, log_observation = \
         statistical_expansion(
@@ -228,7 +220,7 @@ def forward_markov_smoother(
             marginals,
         )
 
-    posterior = backward_pass(
+    posterior = forward_pass(
         log_prior,
         log_transition,
         log_observation,
