@@ -1,52 +1,58 @@
 from functools import partial
-from typing import Tuple, Union, List
+from typing import Tuple, List, Union
+
+import numpy as np
+import scipy as sc
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 
-from varsmooth.objects import (
-    StdGaussian,
-    SqrtGaussian,
-    FunctionalModel,
-    ConditionalMomentsModel,
-)
-from varsmooth.linearization.sigma_points import (
-    SigmaPoints,
-    linearize_functional,
-    linearize_conditional,
-)
+from varsmooth.objects import Gaussian
+from varsmooth.objects import AdditiveGaussianModel
+from varsmooth.objects import ConditionalMomentsModel
+
+from varsmooth.linearization.sigma_points import SigmaPoints
+from varsmooth.linearization.sigma_points import linearize_additive
+from varsmooth.linearization.sigma_points import linearize_conditional
 
 
 def linearize(
-    model: Union[FunctionalModel, ConditionalMomentsModel],
-    x: StdGaussian,
+    model: Union[AdditiveGaussianModel, ConditionalMomentsModel],
+    q: Gaussian,
     order: int = 3,
 ):
-    get_sigma_points = lambda mvn: _get_sigma_points(mvn, order)
-    if isinstance(model, FunctionalModel):
-        f, q = model
-        return linearize_functional(f, x, q, get_sigma_points)
-    mean_func, cov_func = model
-    return linearize_conditional(mean_func, cov_func, x, get_sigma_points)
+    get_sigma_points = \
+        lambda m, chol_P: _get_sigma_points(m, chol_P, order)
+
+    if isinstance(model, AdditiveGaussianModel):
+        fun, noise = model
+        return linearize_additive(fun, noise, q, get_sigma_points)
+    elif isinstance(model, ConditionalMomentsModel):
+        mean_fn, covar_fn = model
+        return linearize_conditional(mean_fn, covar_fn, q, get_sigma_points)
+    else:
+        raise NotImplementedError
 
 
-@partial(jax.jit, static_argnums=(1,))
+@partial(jax.jit, static_argnums=(2,))
 def _get_sigma_points(
-    mvn: SqrtGaussian, order: int
-) -> Tuple[SigmaPoints, np.ndarray]:
-    mean, chol = mvn
-    n_dim = mean.shape[0]
-    wm, wc, xi = _gauss_hermite_weights(n_dim, order)
-    sigma_points = mean[None, :] + (chol @ xi).T
+    m: jnp.ndarray,
+    chol_P: jnp.ndarray,
+    order: int
+) -> SigmaPoints:
 
+    nb_dim = m.shape[0]
+    wm, wc, xi = _gauss_hermite_weights(nb_dim, order)
+    sigma_points = m[None, :] + (chol_P @ xi).T
     return SigmaPoints(sigma_points, wm, wc)
 
 
 def _gauss_hermite_weights(
-    n_dim: int, order: int = 3
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    n = n_dim
+    nb_dim: int,
+    order: int = 3
+) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+
+    n = nb_dim
     p = order
 
     hermite_coeff = _hermite_coeff(p)
@@ -57,13 +63,8 @@ def _gauss_hermite_weights(
     w_1d = np.zeros(shape=(p,))
     for i in range(p):
         w_1d[i] = (
-            2 ** (p - 1)
-            * np.math.factorial(p)
-            * np.sqrt(np.pi)
-            / (
-                p**2
-                * (np.polyval(hermite_coeff[p - 1], hermite_roots[i])) ** 2
-            )
+            2 ** (p - 1) * sc.special.factorial(p) * np.sqrt(np.pi)
+            / (p**2 * (np.polyval(hermite_coeff[p - 1], hermite_roots[i])) ** 2)
         )
 
     # Get roll table
@@ -78,11 +79,10 @@ def _gauss_hermite_weights(
     table = table.astype("int64") - 1
 
     s = 1 / (np.sqrt(np.pi) ** n)
-
     wm = s * np.prod(w_1d[table], axis=0)
     xi = np.sqrt(2) * hermite_roots[table]
 
-    return wm, wm, xi
+    return jnp.asarray(wm), jnp.asarray(wm), jnp.asarray(xi)
 
 
 def _hermite_coeff(order: int) -> List:
