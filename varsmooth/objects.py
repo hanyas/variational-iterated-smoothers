@@ -34,10 +34,10 @@ class GaussMarkov(NamedTuple):
     kernels: AffineGaussian
 
 
-class QuadraticFunction(NamedTuple):
-    Vxx: jnp.ndarray
-    vx: jnp.ndarray
-    v0: jnp.ndarray
+class LogMarginalNorm(NamedTuple):
+    U: jnp.ndarray
+    u: jnp.ndarray
+    eta: jnp.ndarray
 
 
 class Potential(NamedTuple):
@@ -46,22 +46,10 @@ class Potential(NamedTuple):
     rho: jnp.ndarray
 
 
-class LogConditionalNorm(NamedTuple):
-    S: jnp.ndarray
-    s: jnp.ndarray
-    xi: jnp.ndarray
-
-
-class LogMarginalNorm(NamedTuple):
-    U: jnp.ndarray
-    u: jnp.ndarray
-    nu: jnp.ndarray
-
-
 class LogPrior(NamedTuple):
     L: jnp.ndarray
     l: jnp.ndarray
-    eta: jnp.ndarray
+    nu: jnp.ndarray
 
 
 class LogTransition(NamedTuple):
@@ -77,4 +65,4 @@ class LogTransition(NamedTuple):
 class LogObservation(NamedTuple):
     L: jnp.ndarray
     l: jnp.ndarray
-    eta: jnp.ndarray
+    nu: jnp.ndarray
