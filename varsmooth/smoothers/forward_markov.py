@@ -279,14 +279,14 @@ def forward_markov_smoother(
     return posterior
 
 
-def optimize_step(
+def optimize_temperature(
     log_prior: LogPrior,
     log_transition: LogTransition,
     log_observation: LogObservation,
     reference_posterior: GaussMarkov,
     kl_constraint: float,
     init_temperature: float,
-) -> float:
+) -> (float, float):
 
     def dual_objective(temperature):
         damping = temperature / (1.0 + temperature)
@@ -313,9 +313,10 @@ def optimize_step(
         jit=True,
     )
 
-    opt_temperature = dual_opt.run(init_temperature, bounds=(1e-16, 1e16)).params
-    opt_damping = opt_temperature / (1.0 + opt_temperature)
-    return opt_damping
+    result = dual_opt.run(init_temperature, bounds=(1e-16, 1e16))
+    dual_value = result.state.fun_val
+    opt_temperature = result.params
+    return opt_temperature, dual_value
 
 
 def iterated_forward_markov_smoother(
@@ -345,7 +346,7 @@ def iterated_forward_markov_smoother(
                 marginals,
             )
 
-        optimal_damping = optimize_step(
+        optimal_temperature, dual_value = optimize_temperature(
             log_prior,
             log_transition,
             log_observation,
@@ -354,6 +355,7 @@ def iterated_forward_markov_smoother(
             init_temperature
         )
 
+        optimal_damping = optimal_temperature / (1.0 + optimal_temperature)
         optimal_posterior, _ = backward_pass(
             log_prior,
             log_transition,
@@ -367,7 +369,10 @@ def iterated_forward_markov_smoother(
             gauss_markov=optimal_posterior,
             ref_gauss_markov=reference
         )
-        print(f"iter: {i:d}, damping: {optimal_damping:.3f}, kl_div: {kl_div:.3f}")
+        print(
+            f"iter: {i:d}, damping: {optimal_damping:.3f}, "
+            f"kl_div: {kl_div:.3f}, dual: {dual_value:.3f}"
+        )
 
     return optimal_posterior
 

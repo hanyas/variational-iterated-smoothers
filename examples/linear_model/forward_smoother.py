@@ -20,7 +20,7 @@ from tests.test_utils import generate_system
 
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_platform_name", "cpu")
-jax.config.update('jax_disable_jit', True)
+# jax.config.update('jax_disable_jit', True)
 
 dim_x, dim_y = 1, 1
 

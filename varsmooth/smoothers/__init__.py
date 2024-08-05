@@ -1,2 +1,5 @@
 from .forward_markov import forward_markov_smoother
 from .reverse_markov import reverse_markov_smoother
+
+from .forward_markov import iterated_forward_markov_smoother
+from .reverse_markov import iterated_reverse_markov_smoother
