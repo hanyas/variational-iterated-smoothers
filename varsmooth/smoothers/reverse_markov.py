@@ -27,6 +27,51 @@ import jaxopt
 _logdet = lambda x: jnp.linalg.slogdet(x)[1]
 
 
+def initialize_reverse_with_forward(
+    forward_markov: GaussMarkov,
+    forward_marginals: Gaussian,
+):
+
+    rvs_Fs = jnp.zeros_like(forward_markov.kernels.F)
+    rvs_ds = jnp.zeros_like(forward_markov.kernels.d)
+    rvs_Sigmas = jnp.zeros_like(forward_markov.kernels.Sigma)
+
+    nb_steps = rvs_Fs.shape[0]
+    for k in range(nb_steps):
+        m = forward_marginals.mean[k]
+        P = forward_marginals.cov[k]
+
+        fwd_F = forward_markov.kernels.F[k]
+        fwd_d = forward_markov.kernels.d[k]
+        fwd_Sigma = forward_markov.kernels.Sigma[k]
+
+        a = m
+        b = fwd_d + fwd_F @ m
+
+        A = P
+        C = P.T @ fwd_F.T
+        B = fwd_F @ P @ fwd_F.T + fwd_Sigma
+
+        rvs_F = C @ jsc.linalg.inv(B)
+        rvs_d = a - C @ jsc.linalg.inv(B) @ b
+        rvs_Sigma = A - C @ jsc.linalg.inv(B) @ C.T
+
+        rvs_Fs = rvs_Fs.at[k].set(rvs_F)
+        rvs_ds = rvs_ds.at[k].set(rvs_d)
+        rvs_Sigmas = rvs_Sigmas.at[k].set(rvs_Sigma)
+
+    m = forward_marginals.mean[-1]
+    P = forward_marginals.cov[-1]
+
+    reverse_markov = GaussMarkov(
+        marginal=Gaussian(m, P),
+        kernels=AffineGaussian(
+            F=rvs_Fs, d=rvs_ds, Sigma=rvs_Sigmas
+        )
+    )
+    return reverse_markov
+
+
 @partial(jax.vmap, in_axes=(None, 0, None))
 def get_linear_model(
     f: AdditiveGaussianModel,
