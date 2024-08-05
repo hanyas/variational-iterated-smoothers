@@ -7,8 +7,10 @@ from varsmooth.objects import AffineGaussian
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import GaussMarkov
 
+from varsmooth.smoothers.reverse_markov import initialize_reverse_with_forward
 from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
 from varsmooth.smoothers.reverse_markov import backward_pass
+from varsmooth.smoothers.forward_markov import forward_pass
 
 from varsmooth.linearization import gauss_hermite
 
@@ -33,7 +35,7 @@ qw = 0.1  # discretization noise
 nb_steps = 500  # number of observations
 dim_x, dim_y = 5, 2
 
-_, true_states, observations = get_data(x0, dt, r, nb_steps, s1, s2, random_state=13)
+_, true_states, observations = get_data(x0, dt, r, nb_steps, s1, s2, random_state=42)
 transition_cov, observation_cov, \
     transition_fn, observation_fn, _, _ = make_parameters(qc, qw, r, dt, s1, s2)
 
@@ -50,21 +52,21 @@ prior_dist = Gaussian(
     cov=jnp.eye(dim_x)
 )
 
-m = np.zeros((dim_x,))
-P = 10.0 * np.eye(dim_x)
-
-F = 1e0 * np.eye(dim_x)
+F = 1e-1 * np.eye(dim_x)
 d = np.zeros((dim_x,))
 Sigma = 1.0 * np.eye(dim_x)
 
-init_posterior = GaussMarkov(
-    marginal=Gaussian(m, P),
+forward_markov = GaussMarkov(
+    marginal=prior_dist,
     kernels=AffineGaussian(
         F=np.repeat([F], nb_steps, axis=0),
         d=np.repeat([d], nb_steps, axis=0),
         Sigma=np.repeat([Sigma], nb_steps, axis=0),
     )
 )
+forward_marginals = forward_pass(forward_markov)
+
+init_posterior = initialize_reverse_with_forward(forward_markov, forward_marginals)
 
 reverse_markov = iterated_reverse_markov_smoother(
     jnp.array(observations),
@@ -73,7 +75,7 @@ reverse_markov = iterated_reverse_markov_smoother(
     observation_model,
     gauss_hermite,
     init_posterior,
-    kl_constraint=100,
+    kl_constraint=25,
     init_temperature=1e2,
     nb_iter=100,
 )

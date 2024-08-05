@@ -33,7 +33,7 @@ qw = 0.1  # discretization noise
 nb_steps = 500  # number of observations
 dim_x, dim_y = 5, 2
 
-_, true_states, observations = get_data(x0, dt, r, nb_steps, s1, s2, random_state=13)
+_, true_states, observations = get_data(x0, dt, r, nb_steps, s1, s2, random_state=42)
 transition_cov, observation_cov, \
     transition_fn, observation_fn, _, _ = make_parameters(qc, qw, r, dt, s1, s2)
 
@@ -70,7 +70,7 @@ forward_markov = iterated_forward_markov_smoother(
     observation_model,
     gauss_hermite,
     init_posterior,
-    kl_constraint=100,
+    kl_constraint=25,
     init_temperature=1e2,
     nb_iter=100,
 )

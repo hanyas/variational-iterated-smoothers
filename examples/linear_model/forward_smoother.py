@@ -40,7 +40,7 @@ observation_model = AdditiveGaussianModel(
     Gaussian(np.zeros((dim_y,)), Delta)
 )
 
-xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps, random_state=42)
+xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps, random_state=13)
 rts_smoothed = rts_smoother(
     ys,
     prior_dist,
@@ -92,7 +92,7 @@ forward_markov = iterated_forward_markov_smoother(
     observation_model,
     gauss_hermite,
     init_posterior,
-    kl_constraint=50.0,
+    kl_constraint=100.0,
     init_temperature=1e2,
     nb_iter=50,
 )

@@ -8,9 +8,11 @@ from varsmooth.objects import AdditiveGaussianModel
 
 from tests.kalman import rts_smoother
 
+from varsmooth.smoothers.reverse_markov import initialize_reverse_with_forward
 from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
 from varsmooth.smoothers.reverse_markov import reverse_markov_smoother
 from varsmooth.smoothers.reverse_markov import backward_pass
+from varsmooth.smoothers.forward_markov import forward_pass
 
 from varsmooth.linearization import gauss_hermite
 
@@ -40,7 +42,7 @@ observation_model = AdditiveGaussianModel(
     Gaussian(np.zeros((dim_y,)), Delta)
 )
 
-xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps, random_state=42)
+xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps, random_state=13)
 rts_smoothed = rts_smoother(
     ys,
     prior_dist,
@@ -56,21 +58,21 @@ rts_smoothed = rts_smoother(
     )
 )
 
-m = np.zeros((dim_x,))
-P = 10.0 * np.eye(dim_x)
-
-F = 1e0 * np.eye(dim_x)
+F = 1e-1 * np.eye(dim_x)
 d = np.zeros((dim_x,))
-Sigma = 1.0 * np.eye(dim_x)
+Sigma = 10.0 * np.eye(dim_x)
 
-init_posterior = GaussMarkov(
-    marginal=Gaussian(m, P),
+forward_markov = GaussMarkov(
+    marginal=prior_dist,
     kernels=AffineGaussian(
         np.repeat([F], nb_steps, axis=0),
         np.repeat([d], nb_steps, axis=0),
         np.repeat([Sigma], nb_steps, axis=0),
     )
 )
+forward_marginals = forward_pass(forward_markov)
+
+init_posterior = initialize_reverse_with_forward(forward_markov, forward_marginals)
 
 # single iteration
 reverse_markov = reverse_markov_smoother(
@@ -95,9 +97,9 @@ reverse_markov = iterated_reverse_markov_smoother(
     observation_model,
     gauss_hermite,
     init_posterior,
-    kl_constraint=50.0,
+    kl_constraint=150.0,
     init_temperature=1e2,
-    nb_iter=25,
+    nb_iter=50,
 )
 var_smoothed = backward_pass(reverse_markov)
 
