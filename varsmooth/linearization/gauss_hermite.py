@@ -19,7 +19,7 @@ from varsmooth.linearization.sigma_points import linearize_conditional
 def linearize(
     model: Union[AdditiveGaussianModel, ConditionalMomentsModel],
     q: Gaussian,
-    order: int = 3,
+    order: int = 5,
 ):
     get_sigma_points = \
         lambda m, chol_P: _get_sigma_points(m, chol_P, order)
