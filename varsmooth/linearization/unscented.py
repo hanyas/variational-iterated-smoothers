@@ -43,14 +43,8 @@ def _get_sigma_points(
     if kappa is None:
         kappa = 3.0 + nb_dim
 
-    wm, wc, lamda = _unscented_weights(nb_dim, alpha, beta, kappa)
-    scaled_chol = jnp.sqrt(nb_dim + lamda) * chol_P
-
-    zeros = jnp.zeros((1, nb_dim))
-    sigma_points = (
-        m[None, :]
-        + jnp.concatenate([zeros, scaled_chol.T, -scaled_chol.T], axis=0)
-    )
+    wm, wc, xi = _unscented_weights(nb_dim, alpha, beta, kappa)
+    sigma_points = m[None, :] + jnp.dot(chol_P, xi.T).T
     return SigmaPoints(sigma_points, wm, wc)
 
 
@@ -59,11 +53,16 @@ def _unscented_weights(
     alpha: float,
     beta: float,
     kappa: Optional[float]
-) -> Tuple[jnp.ndarray, jnp.ndarray, float]:
+) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
 
     lamda = alpha**2 * (nb_dim + kappa) - nb_dim
     wm = jnp.full(2 * nb_dim + 1, 1 / (2 * (nb_dim + lamda)))
 
     wm = wm.at[0].set(lamda / (nb_dim + lamda))
     wc = wm.at[0].set(lamda / (nb_dim + lamda) + (1 - alpha**2 + beta))
-    return wm, wc, lamda
+
+    zeros = jnp.zeros((1, nb_dim))
+    I_dim = jnp.eye(nb_dim)
+
+    xi = jnp.sqrt(nb_dim + lamda) * jnp.concatenate([zeros, I_dim, -I_dim], axis=0)
+    return wm, wc, xi
