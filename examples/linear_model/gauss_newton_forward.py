@@ -12,7 +12,10 @@ from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
 from varsmooth.smoothers.forward_markov import forward_markov_smoother
 from varsmooth.smoothers.forward_markov import forward_pass
 
-from varsmooth.linearization import gauss_hermite
+from varsmooth.approximation import gauss_hermite_linearization
+from varsmooth.approximation.bayes_gauss_newton import get_log_prior
+from varsmooth.approximation.bayes_gauss_newton import get_log_transition
+from varsmooth.approximation.bayes_gauss_newton import get_log_observation
 
 from tests.lgssm import simulate
 from tests.test_utils import generate_system
@@ -69,13 +72,16 @@ init_posterior = GaussMarkov(
     )
 )
 
+log_prior_fn = lambda q: get_log_prior(prior_dist, q, gauss_hermite_linearization)
+log_transition_fn = lambda q: get_log_transition(transition_model, q, gauss_hermite_linearization)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, gauss_hermite_linearization)
+
 # single iteration
 forward_markov = forward_markov_smoother(
     ys,
-    prior_dist,
-    transition_model,
-    observation_model,
-    gauss_hermite,
+    log_prior_fn,
+    log_transition_fn,
+    log_observation_fn,
     init_posterior,
     0.0
 )
@@ -87,10 +93,9 @@ np.testing.assert_allclose(rts_smoothed.cov, var_smoothed.cov, rtol=1e-3, atol=1
 # iterated smoother
 forward_markov = iterated_forward_markov_smoother(
     ys,
-    prior_dist,
-    transition_model,
-    observation_model,
-    gauss_hermite,
+    log_prior_fn,
+    log_transition_fn,
+    log_observation_fn,
     init_posterior,
     kl_constraint=100.0,
     init_temperature=1e2,

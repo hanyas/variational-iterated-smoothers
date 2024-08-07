@@ -7,12 +7,13 @@ from varsmooth.objects import AffineGaussian
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import GaussMarkov
 
-from varsmooth.smoothers.reverse_markov import initialize_reverse_with_forward
-from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
-from varsmooth.smoothers.reverse_markov import backward_pass
+from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
 from varsmooth.smoothers.forward_markov import forward_pass
 
-from varsmooth.linearization import gauss_hermite
+from varsmooth.approximation import cubature_linearization
+from varsmooth.approximation.bayes_gauss_newton import get_log_prior
+from varsmooth.approximation.bayes_gauss_newton import get_log_transition
+from varsmooth.approximation.bayes_gauss_newton import get_log_observation
 
 from bearing_model import get_data, make_parameters
 
@@ -56,7 +57,7 @@ F = 1e-1 * np.eye(dim_x)
 d = np.zeros((dim_x,))
 Sigma = 1.0 * np.eye(dim_x)
 
-forward_markov = GaussMarkov(
+init_posterior = GaussMarkov(
     marginal=prior_dist,
     kernels=AffineGaussian(
         F=np.repeat([F], nb_steps, axis=0),
@@ -64,22 +65,22 @@ forward_markov = GaussMarkov(
         Sigma=np.repeat([Sigma], nb_steps, axis=0),
     )
 )
-forward_marginals = forward_pass(forward_markov)
 
-init_posterior = initialize_reverse_with_forward(forward_markov, forward_marginals)
+log_prior_fn = lambda q: get_log_prior(prior_dist, q, cubature_linearization)
+log_transition_fn = lambda q: get_log_transition(transition_model, q, cubature_linearization)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, cubature_linearization)
 
-reverse_markov = iterated_reverse_markov_smoother(
+forward_markov = iterated_forward_markov_smoother(
     jnp.array(observations),
-    prior_dist,
-    transition_model,
-    observation_model,
-    gauss_hermite,
+    log_prior_fn,
+    log_transition_fn,
+    log_observation_fn,
     init_posterior,
-    kl_constraint=25,
+    kl_constraint=100,
     init_temperature=1e2,
     nb_iter=100,
 )
-marginals = backward_pass(reverse_markov)
+marginals = forward_pass(forward_markov)
 
 plt.figure(figsize=(7, 7))
 plt.plot(
