@@ -8,15 +8,17 @@ from varsmooth.objects import AffineGaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.objects import AdditiveGaussianModel
 
-from tests.kalman import rts_smoother
-
 from varsmooth.smoothers.forward_markov import forward_markov_smoother
 from varsmooth.smoothers.forward_markov import forward_pass
 
-from varsmooth.linearization import gauss_hermite
+from varsmooth.approximation import gauss_hermite_linearization
+from varsmooth.approximation.bayes_gauss_newton import get_log_prior
+from varsmooth.approximation.bayes_gauss_newton import get_log_transition
+from varsmooth.approximation.bayes_gauss_newton import get_log_observation
 
 from tests.lgssm import simulate
 from tests.test_utils import generate_system
+from tests.kalman import rts_smoother
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -77,12 +79,15 @@ def test_rts_smoother_vs_var_smoother(dim_x, dim_y, seed):
         )
     )
 
+    log_prior_fn = lambda q: get_log_prior(prior_dist, q, gauss_hermite_linearization)
+    log_transition_fn = lambda q: get_log_transition(transition_model, q, gauss_hermite_linearization)
+    log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, gauss_hermite_linearization)
+
     forward_markov = forward_markov_smoother(
         ys,
-        prior_dist,
-        transition_model,
-        observation_model,
-        gauss_hermite,
+        log_prior_fn,
+        log_transition_fn,
+        log_observation_fn,
         init_posterior,
         0.0
     )

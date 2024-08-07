@@ -1,19 +1,19 @@
+import pytest
+
 from functools import partial
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-import pytest
-
 from varsmooth.objects import Gaussian
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import ConditionalMomentsModel
 
-from varsmooth.linearization import extended
-from varsmooth.linearization import unscented
-from varsmooth.linearization import cubature
-from varsmooth.linearization import gauss_hermite
+from varsmooth.approximation import extended_linearization as extended
+from varsmooth.approximation import unscented_linearization as unscented
+from varsmooth.approximation import cubature_linearization as cubature
+from varsmooth.approximation import gauss_hermite_linearization as gauss_hermite
 
 LINEARIZATION_METHODS = [extended, unscented, cubature, gauss_hermite]
 
