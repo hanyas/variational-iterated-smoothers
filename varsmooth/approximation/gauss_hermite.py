@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Callable
 
 import numpy as np
 import scipy as sc
@@ -11,9 +11,21 @@ from varsmooth.objects import Gaussian
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import ConditionalMomentsModel
 
-from varsmooth.linearization.sigma_points import SigmaPoints
-from varsmooth.linearization.sigma_points import linearize_additive
-from varsmooth.linearization.sigma_points import linearize_conditional
+from varsmooth.approximation.sigma_points import SigmaPoints
+from varsmooth.approximation.sigma_points import linearize_additive
+from varsmooth.approximation.sigma_points import linearize_conditional
+from varsmooth.approximation.sigma_points import quadratize_any
+
+
+def quadratize(
+    fun: Callable,
+    q: Gaussian,
+    order: int = 5,
+):
+    _get_sigma_points = \
+        lambda m, chol_P: get_sigma_points(m, chol_P, order)
+
+    return quadratize_any(fun, q, _get_sigma_points)
 
 
 def linearize(
@@ -21,21 +33,21 @@ def linearize(
     q: Gaussian,
     order: int = 5,
 ):
-    get_sigma_points = \
-        lambda m, chol_P: _get_sigma_points(m, chol_P, order)
+    _get_sigma_points = \
+        lambda m, chol_P: get_sigma_points(m, chol_P, order)
 
     if isinstance(model, AdditiveGaussianModel):
         fun, noise = model
-        return linearize_additive(fun, noise, q, get_sigma_points)
+        return linearize_additive(fun, noise, q, _get_sigma_points)
     elif isinstance(model, ConditionalMomentsModel):
         mean_fn, covar_fn = model
-        return linearize_conditional(mean_fn, covar_fn, q, get_sigma_points)
+        return linearize_conditional(mean_fn, covar_fn, q, _get_sigma_points)
     else:
         raise NotImplementedError
 
 
 @partial(jax.jit, static_argnums=(2,))
-def _get_sigma_points(
+def get_sigma_points(
     m: jnp.ndarray,
     chol_P: jnp.ndarray,
     order: int
@@ -44,7 +56,7 @@ def _get_sigma_points(
     nb_dim = m.shape[0]
     wm, wc, xi = _gauss_hermite_weights(nb_dim, order)
     sigma_points = m[None, :] + (chol_P @ xi).T
-    return SigmaPoints(sigma_points, wm, wc)
+    return SigmaPoints(sigma_points, wm, wc, xi)
 
 
 def _gauss_hermite_weights(

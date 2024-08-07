@@ -5,6 +5,9 @@ from varsmooth.objects import Gaussian
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import ConditionalMomentsModel
 
+def quadratize():
+    raise NotImplementedError
+
 
 def linearize(
     model: Union[AdditiveGaussianModel, ConditionalMomentsModel],

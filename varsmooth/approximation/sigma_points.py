@@ -2,6 +2,8 @@ from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
+import jax.scipy as jsc
+
 from jax.scipy.linalg import cho_solve
 
 from varsmooth.objects import Gaussian
@@ -22,6 +24,7 @@ class SigmaPoints(NamedTuple):
     points: jnp.ndarray
     wm: jnp.ndarray
     wc: jnp.ndarray
+    xi: jnp.ndarray
 
 
 def linearize_additive(fun, noise, q, get_sigma_points):
@@ -56,3 +59,33 @@ def linearize_conditional(cond_mean, cond_cov, q, get_sigma_points):
     Phi = get_cov(x_pts.wc, cm_pts, m_cm, cm_pts, m_cm)
     L = Phi - (F @ chol_x) @ (F @ chol_x).T + m_cc
     return F, m_cm - F @ m_x, L
+
+
+def quadratize_any(fun, q, get_sigma_points):
+    m_x, chol_x = get_sqrt(q)
+    x_pts = get_sigma_points(m_x, chol_x)
+
+    _, dim = x_pts.points.shape
+
+    f_pts = jax.vmap(fun)(x_pts.points).squeeze()
+    wf_pts = x_pts.wm * f_pts
+
+    a = jnp.sum(wf_pts)
+    b = jnp.einsum("n,kn->k", wf_pts, x_pts.xi)
+    C = (
+        jnp.einsum("n,kn,hn->kh", wf_pts, x_pts.xi, x_pts.xi)
+        - a * jnp.eye(dim)
+    )
+
+    Q = chol_x @ jsc.linalg.inv(C) @ chol_x.T
+    inv_Q = jsc.linalg.inv(Q)
+    inv_chol_x = jsc.linalg.inv(chol_x)
+
+    f0 = (
+        a - 0.5 * jnp.trace(C)
+        - jnp.dot(b, inv_chol_x @ m_x)
+        + 0.5 * m_x.T @ inv_Q @ m_x
+    )
+    Fx = jnp.dot(b, inv_chol_x) - inv_Q @ m_x
+    Fxx = - jsc.linalg.inv(Q)
+    return Fxx, Fx, f0

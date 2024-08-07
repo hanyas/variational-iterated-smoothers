@@ -1,4 +1,4 @@
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, Callable
 
 import jax.numpy as jnp
 
@@ -6,9 +6,22 @@ from varsmooth.objects import Gaussian
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import ConditionalMomentsModel
 
-from varsmooth.linearization.sigma_points import SigmaPoints
-from varsmooth.linearization.sigma_points import linearize_additive
-from varsmooth.linearization.sigma_points import linearize_conditional
+from varsmooth.approximation.sigma_points import SigmaPoints
+from varsmooth.approximation.sigma_points import linearize_additive
+from varsmooth.approximation.sigma_points import linearize_conditional
+from varsmooth.approximation.sigma_points import quadratize_any
+
+
+def quadratize(
+    fun: Callable,
+    q: Gaussian,
+    alpha: float = 1.0,
+    beta: float = 0.0,
+    kappa: float = None,
+):
+    _get_sigma_points = \
+        lambda m, chol_P: get_sigma_points(m, chol_P, alpha, beta, kappa)
+    return quadratize_any(fun, q, _get_sigma_points)
 
 
 def linearize(
@@ -18,20 +31,20 @@ def linearize(
     beta: float = 0.0,
     kappa: float = None,
 ):
-    get_sigma_points = \
-        lambda m, chol_P: _get_sigma_points(m, chol_P, alpha, beta, kappa)
+    _get_sigma_points = \
+        lambda m, chol_P: get_sigma_points(m, chol_P, alpha, beta, kappa)
 
     if isinstance(model, AdditiveGaussianModel):
         fun, noise = model
-        return linearize_additive(fun, noise, q, get_sigma_points)
+        return linearize_additive(fun, noise, q, _get_sigma_points)
     elif isinstance(model, ConditionalMomentsModel):
         mean_fn, cov_fn = model
-        return linearize_conditional(mean_fn, cov_fn, q, get_sigma_points)
+        return linearize_conditional(mean_fn, cov_fn, q, _get_sigma_points)
     else:
         raise NotImplementedError
 
 
-def _get_sigma_points(
+def get_sigma_points(
     m: jnp.ndarray,
     chol_P: jnp.ndarray,
     alpha: float,
@@ -44,8 +57,8 @@ def _get_sigma_points(
         kappa = 3.0 + nb_dim
 
     wm, wc, xi = _unscented_weights(nb_dim, alpha, beta, kappa)
-    sigma_points = m[None, :] + jnp.dot(chol_P, xi.T).T
-    return SigmaPoints(sigma_points, wm, wc)
+    sigma_points = m[None, :] + jnp.dot(chol_P, xi).T
+    return SigmaPoints(sigma_points, wm, wc, xi)
 
 
 def _unscented_weights(
@@ -65,4 +78,4 @@ def _unscented_weights(
     I_dim = jnp.eye(nb_dim)
 
     xi = jnp.sqrt(nb_dim + lamda) * jnp.concatenate([zeros, I_dim, -I_dim], axis=0)
-    return wm, wc, xi
+    return wm, wc, xi.T
