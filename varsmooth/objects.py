@@ -1,16 +1,31 @@
 from typing import NamedTuple, Callable
 
 import jax.numpy as jnp
+import jax.scipy as jsc
 
 
 class Gaussian(NamedTuple):
     mean: jnp.ndarray
     cov: jnp.ndarray
 
+    def logpdf(self, x):
+        diff = x - self.mean
+        return (
+            - 0.5 * diff.T @ jsc.linalg.solve(self.cov, diff)
+            - 0.5 * jnp.linalg.slogdet(2.0 * jnp.pi * self.cov)[1]
+        )
+
 
 class AdditiveGaussianModel(NamedTuple):
     fun: Callable
     noise: Gaussian
+
+    def logpdf(self, y, x):
+        diff = y - self.fun(x)
+        return (
+            - 0.5 * diff.T @ jsc.linalg.solve(self.noise.cov, diff)
+            - 0.5 * jnp.linalg.slogdet(2.0 * jnp.pi * self.noise.cov)[1]
+        )
 
 
 class ConditionalMomentsModel(NamedTuple):
@@ -24,9 +39,11 @@ class AffineGaussian(NamedTuple):
     Sigma: jnp.ndarray
 
     def logpdf(self, y, x):
-        err = y - self.F @ x - self.d
-        return - 0.5 * err.T @ jnp.linalg.inv(self.Sigma) @ err\
+        diff = y - self.F @ x - self.d
+        return (
+            - 0.5 * diff.T @ jsc.linalg.solve(self.Sigma, diff)
             - 0.5 * jnp.linalg.slogdet(2.0 * jnp.pi * self.Sigma)[1]
+        )
 
 
 class GaussMarkov(NamedTuple):
