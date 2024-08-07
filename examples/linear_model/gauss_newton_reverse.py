@@ -8,11 +8,11 @@ from varsmooth.objects import AdditiveGaussianModel
 
 from tests.kalman import rts_smoother
 
-from varsmooth.smoothers.reverse_markov import initialize_reverse_with_forward
 from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
 from varsmooth.smoothers.reverse_markov import reverse_markov_smoother
 from varsmooth.smoothers.reverse_markov import backward_pass
 from varsmooth.smoothers.forward_markov import forward_pass
+from varsmooth.smoothers.utils import initialize_reverse_with_forward
 
 from varsmooth.approximation import gauss_hermite_linearization
 from varsmooth.approximation.bayes_gauss_newton import get_log_prior

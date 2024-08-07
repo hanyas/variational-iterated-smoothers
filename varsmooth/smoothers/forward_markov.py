@@ -15,6 +15,10 @@ from varsmooth.objects import (
     Potential,
     LogMarginalNorm
 )
+from varsmooth.smoothers.utils import (
+    kl_between_marginals,
+    statistical_expansion
+)
 from varsmooth.utils import (
     none_or_concat,
     none_or_shift,
@@ -25,24 +29,6 @@ from varsmooth.utils import (
 import jaxopt
 
 _logdet = lambda x: jnp.linalg.slogdet(x)[1]
-
-
-def statistical_expansion(
-    observations: jnp.ndarray,
-    log_prior_fn: Callable,
-    log_transition_fn: Callable,
-    log_observation_fn: Callable,
-    posterior_marginals: Gaussian
-) -> (LogPrior, LogTransition, LogObservation):
-
-    init_marginal = none_or_idx(posterior_marginals, 0)
-    prev_marginals = none_or_shift(posterior_marginals, -1)
-    next_marginals = none_or_shift(posterior_marginals, 1)
-
-    log_prior = log_prior_fn(init_marginal)
-    log_transition = log_transition_fn(prev_marginals)
-    log_observation = log_observation_fn(observations, next_marginals)
-    return log_prior, log_transition, log_observation
 
 
 def backward_pass(
@@ -348,15 +334,6 @@ def iterated_forward_markov_smoother(
         f=_iteration, init=init_posterior, xs=jnp.arange(nb_iter)
     )
     return posterior
-
-
-def kl_between_marginals(p, q):
-    dim = p.mean.shape[0]
-    return 0.5 * (
-        jnp.trace(jsc.linalg.inv(q.cov) @ p.cov) - dim
-        + (q.mean - p.mean).T @ jsc.linalg.solve(q.cov, q.mean - p.mean)
-        + _logdet(q.cov) - _logdet(p.cov)
-    )
 
 
 def kl_between_gauss_markovs(
