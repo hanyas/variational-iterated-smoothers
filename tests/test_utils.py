@@ -9,13 +9,13 @@ def generate_system(dim_x, dim_y):
     chol_P[np.triu_indices(dim_x, 1)] = 0.
     P = chol_P @ chol_P.T
 
-    chol_covar = np.random.rand(dim_y, dim_y)
-    chol_covar[np.triu_indices(dim_y, 1)] = 0.
-    covar = chol_covar @ chol_covar.T
+    chol_Sigma = np.random.rand(dim_y, dim_y)
+    chol_Sigma[np.triu_indices(dim_y, 1)] = 0.
+    Sigma = chol_Sigma @ chol_Sigma.T
 
-    mat = np.eye(dim_y, dim_x)
-    offset = np.random.randn(dim_y)
-    vecs = np.random.randn(dim_y)
+    A = 0.9 * np.eye(dim_y, dim_x)
+    b = np.random.randn(dim_y)
+    xs = np.random.randn(dim_y)
 
     q = Gaussian(m, P)
-    return q, mat, offset, covar, vecs
+    return q, A, b, Sigma, xs
