@@ -61,31 +61,57 @@ def linearize_conditional(cond_mean, cond_cov, q, get_sigma_points):
     return F, m_cm - F @ m_x, L
 
 
-def quadratize_any(fun, q, get_sigma_points):
+def quadratize_any(f, q, get_sigma_points):
     m_x, chol_x = get_sqrt(q)
     x_pts = get_sigma_points(m_x, chol_x)
 
-    _, dim = x_pts.points.shape
+    H_fn = lambda x: jax.jacrev(jax.jacrev(f))(x)
+    J_fn = lambda x: jax.jacrev(f)(x)
 
-    f_pts = jax.vmap(fun)(x_pts.points).squeeze()
-    wf_pts = x_pts.wm * f_pts
+    Hs = jax.vmap(H_fn)(x_pts.points)
+    E_H = jnp.einsum("n,nkh->kh", x_pts.wm, Hs)
+    Fxx = - E_H
 
-    a = jnp.sum(wf_pts)
-    b = jnp.einsum("n,kn->k", wf_pts, x_pts.xi)
-    C = (
-        jnp.einsum("n,kn,hn->kh", wf_pts, x_pts.xi, x_pts.xi)
-        - a * jnp.eye(dim)
-    )
+    Js = jax.vmap(J_fn)(x_pts.points)
+    E_J = jnp.einsum("n,nk->k", x_pts.wm, Js)
+    Fx = E_J - E_H @ m_x
 
-    Q = chol_x @ jsc.linalg.inv(C) @ chol_x.T
-    inv_Q = jsc.linalg.inv(Q)
-    inv_chol_x = jsc.linalg.inv(chol_x)
-
+    fs = jax.vmap(f)(x_pts.points)
+    E_f = jnp.dot(x_pts.wm, fs)
     f0 = (
-        a - 0.5 * jnp.trace(C)
-        - jnp.dot(b, inv_chol_x @ m_x)
-        + 0.5 * m_x.T @ inv_Q @ m_x
+        E_f
+        - jnp.dot(E_J, m_x)
+        + 0.5 * m_x.T @ E_H @ m_x
+        - 0.5 * jnp.trace(E_H @ (chol_x @ chol_x.T))
     )
-    Fx = jnp.dot(b, inv_chol_x) - inv_Q @ m_x
-    Fxx = - jsc.linalg.inv(Q)
     return Fxx, Fx, f0
+
+
+# def quadratize_any(fun, q, get_sigma_points):
+#     m_x, chol_x = get_sqrt(q)
+#     x_pts = get_sigma_points(m_x, chol_x)
+#
+#     _, dim = x_pts.points.shape
+#
+#     f_pts = jax.vmap(fun)(x_pts.points).squeeze()
+#     wf_pts = x_pts.wm * f_pts
+#
+#     a = jnp.sum(wf_pts)
+#     b = jnp.einsum("n,kn->k", wf_pts, x_pts.xi)
+#     C = (
+#         jnp.einsum("n,kn,hn->kh", wf_pts, x_pts.xi, x_pts.xi)
+#         - a * jnp.eye(dim)
+#     )
+#
+#     Q = chol_x @ jsc.linalg.solve(C, chol_x.T)
+#
+#     f0 = (
+#         a - 0.5 * jnp.trace(C)
+#         - jnp.dot(b, jsc.linalg.solve(chol_x, m_x))
+#         + 0.5 * m_x.T @ jsc.linalg.solve(Q, m_x)
+#     )
+#     Fx = jsc.linalg.solve(chol_x.T, b.T).T - jsc.linalg.solve(Q, m_x)
+#     Fxx = - jsc.linalg.inv(Q)
+#     return Fxx, Fx, f0
+
+

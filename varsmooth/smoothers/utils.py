@@ -1,10 +1,19 @@
 from typing import Callable
 
-from jax import numpy as jnp, scipy as jsc
+from jax import numpy as jnp
+from jax import scipy as jsc
 
-from varsmooth.objects import Gaussian, LogPrior, LogTransition, LogObservation, GaussMarkov, AffineGaussian
-from varsmooth.smoothers.forward_markov import _logdet
+from varsmooth.objects import (
+    Gaussian,
+    AffineGaussian,
+    GaussMarkov,
+    LogPrior,
+    LogTransition,
+    LogObservation,
+)
 from varsmooth.utils import none_or_idx, none_or_shift
+
+_logdet = lambda x: jnp.linalg.slogdet(x)[1]
 
 
 def kl_between_marginals(p, q):
@@ -21,6 +30,7 @@ def statistical_expansion(
     log_prior_fn: Callable,
     log_transition_fn: Callable,
     log_observation_fn: Callable,
+    posterior_kernels: AffineGaussian,
     posterior_marginals: Gaussian
 ) -> (LogPrior, LogTransition, LogObservation):
 
@@ -29,7 +39,7 @@ def statistical_expansion(
     next_marginals = none_or_shift(posterior_marginals, 1)
 
     log_prior = log_prior_fn(init_marginal)
-    log_transition = log_transition_fn(prev_marginals)
+    log_transition = log_transition_fn(prev_marginals, posterior_kernels)
     log_observation = log_observation_fn(observations, next_marginals)
     return log_prior, log_transition, log_observation
 
