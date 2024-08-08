@@ -31,6 +31,7 @@ import jaxopt
 _logdet = lambda x: jnp.linalg.slogdet(x)[1]
 
 
+@jax.jit
 def backward_pass(
     log_prior: LogPrior,
     log_transition: LogTransition,
@@ -45,7 +46,10 @@ def backward_pass(
             L, l, nu, \
             F, d, Sigma = args
 
-        inv_Sigma = jsc.linalg.inv(Sigma)
+        # vals, vecs = eig(C11)
+        # real_vals = jnp.clip(jnp.real(vals), 1e-4, jnp.inf)
+        # real_vecs = jnp.real(vecs)
+        # C11 = real_vecs @ jnp.diag(real_vals) @ real_vecs.T
 
         G11 = (1.0 - damping) * (C11 + R) + damping * jsc.linalg.inv(Sigma)
         G22 = (1.0 - damping) * C22 + damping * F.T @ jsc.linalg.solve(Sigma, F)
@@ -61,20 +65,25 @@ def backward_pass(
         G11 = symmetrize(G11)
         G22 = symmetrize(G22)
 
-        S = G22 - G12.T @ jsc.linalg.solve(G11, G12)
-        s = g2 + G12.T @ jsc.linalg.solve(G11, g1)
+        # vals, vecs = eig(G11)
+        # real_vals = jnp.clip(jnp.real(vals), 1e-4, jnp.inf)
+        # real_vecs = jnp.real(vecs)
+        # G11 = real_vecs @ jnp.diag(real_vals) @ real_vecs.T
+
+        S = G22 - G12.T @ jsc.linalg.solve(G11, G12, assume_a="pos")
+        s = g2 + G12.T @ jsc.linalg.solve(G11, g1, assume_a="pos")
         xi = (
             theta
             + 0.5 * _logdet(2 * jnp.pi * jsc.linalg.inv(G11))
-            + 0.5 * g1.T @ jsc.linalg.solve(G11, g1)
+            + 0.5 * g1.T @ jsc.linalg.solve(G11, g1, assume_a="pos")
         )
 
         R = L + 1.0 / (1.0 - damping) * S
         r = l + 1.0 / (1.0 - damping) * s
         rho = nu + 1.0 / (1.0 - damping) * xi
 
-        F = jsc.linalg.solve(G11, G12)
-        d = jsc.linalg.solve(G11, g1)
+        F = jsc.linalg.solve(G11, G12, assume_a="pos")
+        d = jsc.linalg.solve(G11, g1, assume_a="pos")
         Sigma = jsc.linalg.inv(G11)
 
         return Potential(R, r, rho), AffineGaussian(F, d, Sigma)
@@ -120,17 +129,22 @@ def backward_pass(
     J11 = symmetrize(J11)
     J22 = symmetrize(J22)
 
-    m = jsc.linalg.solve(J11, j1)
+    # vals, vecs = eig(J11)
+    # real_vals = jnp.clip(jnp.real(vals), 1e-4, jnp.inf)
+    # real_vecs = jnp.real(vecs)
+    # J11 = real_vecs @ jnp.diag(real_vals) @ real_vecs.T
+
+    m = jsc.linalg.solve(J11, j1, assume_a="pos")
     P = jsc.linalg.inv(J11)
     marginal = Gaussian(m, P)
 
     # get log normalizer
-    U = J22 - J12.T @ jsc.linalg.solve(J11, J12)
-    u = j2 + J12.T @ jsc.linalg.solve(J11, j1)
+    U = J22 - J12.T @ jsc.linalg.solve(J11, J12, assume_a="pos")
+    u = j2 + J12.T @ jsc.linalg.solve(J11, j1, assume_a="pos")
     eta = (
         tau
         + 0.5 * _logdet(2 * jnp.pi * jsc.linalg.inv(J11))
-        + 0.5 * j1.T @ jsc.linalg.solve(J11, j1)
+        + 0.5 * j1.T @ jsc.linalg.solve(J11, j1, assume_a="pos")
     )
 
     return GaussMarkov(marginal, kernels), LogMarginalNorm(U, u, eta)
@@ -146,10 +160,11 @@ def forward_pass(posterior: GaussMarkov) -> Gaussian:
         m, P = q
         F, d, Sigma = kernel
 
-        m = F @ m + d
-        P = F @ P @ F.T + Sigma
-        q = Gaussian(m, P)
-        return q, q
+        qn = Gaussian(
+            mean=F @ m + d,
+            cov=F @ P @ F.T + Sigma
+        )
+        return qn, qn
 
     _, marginals = jax.lax.scan(_forward, init_marginal, kernels)
     return none_or_concat(marginals, init_marginal, position=1)
@@ -160,11 +175,11 @@ def forward_markov_smoother(
     log_prior_fn: Callable,
     log_transition_fn: Callable,
     log_observation_fn: Callable,
-    nominal_posterior: GaussMarkov,
+    reference_posterior: GaussMarkov,
     temperature: float
 ) -> GaussMarkov:
 
-    marginals = forward_pass(nominal_posterior)
+    marginals = forward_pass(reference_posterior)
 
     log_prior, log_transition, log_observation = \
         statistical_expansion(
@@ -172,6 +187,7 @@ def forward_markov_smoother(
             log_prior_fn,
             log_transition_fn,
             log_observation_fn,
+            reference_posterior.kernels,
             marginals,
         )
 
@@ -180,7 +196,7 @@ def forward_markov_smoother(
         log_prior,
         log_transition,
         log_observation,
-        nominal_posterior,
+        reference_posterior,
         damping,
     )
     return posterior
@@ -239,35 +255,37 @@ def optimize_temperature(
     init_temperature: float,
 ) -> (float, float):
 
-    def dual_fn(temperature):
-        _temperature = jnp.squeeze(temperature)
-        return dual_objective(
+    def dual_objective(temperature):
+        damping = temperature / (1.0 + temperature)
+        posterior, lognorm = backward_pass(
             log_prior,
             log_transition,
             log_observation,
             reference_posterior,
-            kl_constraint,
-            _temperature,
+            damping,
         )
 
-    dual_opt = jaxopt.LBFGSB(
-        fun=dual_fn,
+        U, u, eta = lognorm
+        m, _ = reference_posterior.marginal
+
+        dual_value = damping * kl_constraint
+        dual_value += - 0.5 * m.T @ U @ m + m.T @ u + eta
+        return dual_value / (1.0 - damping)
+
+    dual_opt = jaxopt.ScipyBoundedMinimize(
+        fun=dual_objective,
+        method="L-BFGS-B",
         tol=1e-3,
         maxiter=500,
-        jit=True,
+        jit=False,
     )
 
-    params, opt_state = dual_opt.run(
-        init_params=jnp.atleast_1d(init_temperature),
-        bounds=(1e-16, 1e16)
-    )
-
-    dual_value = opt_state.value
-    opt_temperature = jnp.squeeze(params)
+    result = dual_opt.run(init_temperature, bounds=(1e-16, 1e16))
+    dual_value = result.state.fun_val
+    opt_temperature = result.params
     return opt_temperature, dual_value
 
 
-@partial(jax.jit, static_argnums=(1, 2, 3, 5, 6, 7))
 def iterated_forward_markov_smoother(
     observations: jnp.ndarray,
     log_prior_fn: Callable,
@@ -278,10 +296,10 @@ def iterated_forward_markov_smoother(
     init_temperature: float,
     nb_iter: int
 ):
+    optimal_posterior = init_posterior
 
-    def _iteration(carry, args):
-        reference = carry
-        iter = args
+    for i in range(nb_iter):
+        reference = optimal_posterior
 
         marginals = forward_pass(reference)
         log_prior, log_transition, log_observation = \
@@ -290,17 +308,11 @@ def iterated_forward_markov_smoother(
                 log_prior_fn,
                 log_transition_fn,
                 log_observation_fn,
+                reference.kernels,
                 marginals,
             )
 
-        objective = vanilla_objective(
-            log_prior,
-            log_transition,
-            log_observation,
-            reference,
-        )
-
-        temperature, _ = optimize_temperature(
+        optimal_temperature, dual_value = optimize_temperature(
             log_prior,
             log_transition,
             log_observation,
@@ -309,31 +321,133 @@ def iterated_forward_markov_smoother(
             init_temperature
         )
 
-        damping = temperature / (1.0 + temperature)
-        posterior, _ = backward_pass(
+        optimal_damping = optimal_temperature / (1.0 + optimal_temperature)
+        optimal_posterior, _ = backward_pass(
             log_prior,
             log_transition,
             log_observation,
             reference,
-            damping,
+            optimal_damping,
         )
 
         kl_div = kl_between_gauss_markovs(
-            marginals=forward_pass(posterior),
-            gauss_markov=posterior,
+            marginals=forward_pass(optimal_posterior),
+            gauss_markov=optimal_posterior,
             ref_gauss_markov=reference
         )
-        jax.debug.print(
-            "iter: {a}, damping: {b}, kl_div: {c}",
-            a=iter, b=damping, c=kl_div
+        print(
+            f"iter: {i:d}, damping: {optimal_damping:.3f}, "
+            f"kl_div: {kl_div:.3f}, dual: {dual_value:.3f}"
         )
 
-        return posterior, posterior
+    return optimal_posterior
 
-    posterior, _ = jax.lax.scan(
-        f=_iteration, init=init_posterior, xs=jnp.arange(nb_iter)
-    )
-    return posterior
+
+# def optimize_temperature(
+#     log_prior: LogPrior,
+#     log_transition: LogTransition,
+#     log_observation: LogObservation,
+#     reference_posterior: GaussMarkov,
+#     kl_constraint: float,
+#     init_temperature: float,
+# ) -> (float, float):
+#
+#     def dual_fn(temperature):
+#         _temperature = jnp.squeeze(temperature)
+#         return dual_objective(
+#             log_prior,
+#             log_transition,
+#             log_observation,
+#             reference_posterior,
+#             kl_constraint,
+#             _temperature,
+#         )
+#
+#     dual_opt = jaxopt.LBFGSB(
+#         fun=dual_fn,
+#         tol=1e-3,
+#         maxiter=500,
+#         jit=True,
+#     )
+#
+#     params, opt_state = dual_opt.run(
+#         init_params=jnp.atleast_1d(init_temperature),
+#         bounds=(1e-16, 1e16)
+#     )
+#
+#     dual_value = opt_state.value
+#     opt_temperature = jnp.squeeze(params)
+#     return opt_temperature, dual_value
+#
+#
+# @partial(jax.jit, static_argnums=(1, 2, 3, 5, 6, 7))
+# def iterated_forward_markov_smoother(
+#     observations: jnp.ndarray,
+#     log_prior_fn: Callable,
+#     log_transition_fn: Callable,
+#     log_observation_fn: Callable,
+#     init_posterior: GaussMarkov,
+#     kl_constraint: float,
+#     init_temperature: float,
+#     nb_iter: int
+# ):
+#
+#     def _iteration(carry, args):
+#         reference = carry
+#         iter = args
+#
+#         marginals = forward_pass(reference)
+#         log_prior, log_transition, log_observation = \
+#             statistical_expansion(
+#                 observations,
+#                 log_prior_fn,
+#                 log_transition_fn,
+#                 log_observation_fn,
+#                 reference.kernels,
+#                 marginals,
+#             )
+#
+#         objective = vanilla_objective(
+#             log_prior,
+#             log_transition,
+#             log_observation,
+#             reference,
+#         )
+#
+#         temperature, _ = optimize_temperature(
+#             log_prior,
+#             log_transition,
+#             log_observation,
+#             reference,
+#             kl_constraint,
+#             init_temperature
+#         )
+#
+#         damping = temperature / (1.0 + temperature)
+#         posterior, _ = backward_pass(
+#             log_prior,
+#             log_transition,
+#             log_observation,
+#             reference,
+#             damping,
+#         )
+#
+#         kl_div = kl_between_gauss_markovs(
+#             marginals=forward_pass(posterior),
+#             gauss_markov=posterior,
+#             ref_gauss_markov=reference
+#         )
+#         jax.debug.print(
+#             "iter: {a}, damping: {b}, kl_div: {c}",
+#             a=iter, b=damping, c=kl_div
+#         )
+#
+#         return posterior, posterior
+#
+#     posterior, _ = jax.lax.scan(
+#         f=_iteration, init=init_posterior, xs=jnp.arange(nb_iter)
+#     )
+#     return posterior
 
 
 def kl_between_gauss_markovs(
