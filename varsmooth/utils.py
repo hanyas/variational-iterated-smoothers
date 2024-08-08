@@ -1,5 +1,9 @@
+from functools import partial
+
 import jax
 import jax.numpy as jnp
+
+from jax import custom_jvp
 
 
 def symmetrize(A):
@@ -112,3 +116,30 @@ def _cholesky_update(chol, update_vector, multiplier=1.0):
     new_chol = _set_triu(new_chol, 0.0)
     new_chol = jnp.where(jnp.isfinite(new_chol), new_chol, 0.0)
     return new_chol
+
+
+@custom_jvp
+def eig(a):
+    w, vl, vr = jax.lax.linalg.eig(a)
+    return w, vr
+
+
+@eig.defjvp
+def eig_jvp_rule(primals, tangents):
+    a, = primals
+    da, = tangents
+
+    w, v = eig(a)
+
+    eye = jnp.eye(a.shape[-1], dtype=a.dtype)
+    # carefully build reciprocal delta-eigenvalue matrix, avoiding NaNs.
+    Fmat = (jnp.reciprocal(eye + w[..., jnp.newaxis, :] - w[..., jnp.newaxis])
+            - eye)
+    dot = partial(jax.lax.dot if a.ndim == 2 else jax.lax.batch_matmul,
+                  precision=jax.lax.Precision.HIGHEST)
+    vinv_da_v = dot(jnp.linalg.solve(v, da), v)
+    du = dot(v, jnp.multiply(Fmat, vinv_da_v))
+    corrections = (jnp.conj(v) * du).sum(-2, keepdims=True)
+    dv = du - v * corrections
+    dw = jnp.diagonal(vinv_da_v, axis1=-2, axis2=-1)
+    return (w, v), (dw, dv)
