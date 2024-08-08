@@ -6,17 +6,16 @@ from varsmooth.objects import AffineGaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.objects import AdditiveGaussianModel
 
-from tests.kalman import rts_smoother
-
 from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
 from varsmooth.smoothers.forward_markov import forward_markov_smoother
 from varsmooth.smoothers.forward_markov import forward_pass
 
 from varsmooth.approximation import gauss_hermite_linearization
-from varsmooth.approximation.bayes_gauss_newton import get_log_prior
-from varsmooth.approximation.bayes_gauss_newton import get_log_transition
-from varsmooth.approximation.bayes_gauss_newton import get_log_observation
+from varsmooth.approximation.posterior_linearization import get_log_prior
+from varsmooth.approximation.posterior_linearization import get_log_transition
+from varsmooth.approximation.posterior_linearization import get_log_observation
 
+from tests.kalman import rts_smoother
 from tests.lgssm import simulate
 from tests.test_utils import generate_system
 
@@ -25,10 +24,9 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_platform_name", "cpu")
 # jax.config.update('jax_disable_jit', True)
 
-dim_x, dim_y = 1, 1
-
 np.random.seed(0)
 
+dim_x, dim_y = 3, 2
 nb_steps = 100
 
 prior_dist, A, b, Omega, _ = generate_system(dim_x, dim_x)
@@ -43,7 +41,7 @@ observation_model = AdditiveGaussianModel(
     Gaussian(np.zeros((dim_y,)), Delta)
 )
 
-xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps, random_state=13)
+xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps, random_state=1)
 rts_smoothed = rts_smoother(
     ys,
     prior_dist,
@@ -73,7 +71,7 @@ init_posterior = GaussMarkov(
 )
 
 log_prior_fn = lambda q: get_log_prior(prior_dist, q, gauss_hermite_linearization)
-log_transition_fn = lambda q: get_log_transition(transition_model, q, gauss_hermite_linearization)
+log_transition_fn = lambda q, _: get_log_transition(transition_model, q, gauss_hermite_linearization)
 log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, gauss_hermite_linearization)
 
 # single iteration
