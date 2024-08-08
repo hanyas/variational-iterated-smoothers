@@ -3,6 +3,8 @@ from typing import NamedTuple, Callable
 import jax.numpy as jnp
 import jax.scipy as jsc
 
+_logdet = lambda x: jnp.linalg.slogdet(x)[1]
+
 
 class Gaussian(NamedTuple):
     mean: jnp.ndarray
@@ -12,7 +14,7 @@ class Gaussian(NamedTuple):
         diff = x - self.mean
         return (
             - 0.5 * diff.T @ jsc.linalg.solve(self.cov, diff)
-            - 0.5 * jnp.linalg.slogdet(2.0 * jnp.pi * self.cov)[1]
+            - 0.5 * _logdet(2 * jnp.pi * self.cov)
         )
 
 
@@ -24,7 +26,7 @@ class AdditiveGaussianModel(NamedTuple):
         diff = y - self.fun(x)
         return (
             - 0.5 * diff.T @ jsc.linalg.solve(self.noise.cov, diff)
-            - 0.5 * jnp.linalg.slogdet(2.0 * jnp.pi * self.noise.cov)[1]
+            - 0.5 * _logdet(2 * jnp.pi * self.noise.cov)
         )
 
 
@@ -42,7 +44,7 @@ class AffineGaussian(NamedTuple):
         diff = y - self.F @ x - self.d
         return (
             - 0.5 * diff.T @ jsc.linalg.solve(self.Sigma, diff)
-            - 0.5 * jnp.linalg.slogdet(2.0 * jnp.pi * self.Sigma)[1]
+            - 0.5 * _logdet(2.0 * jnp.pi * self.Sigma)
         )
 
 

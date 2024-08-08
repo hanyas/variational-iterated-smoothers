@@ -24,7 +24,6 @@ def quadratize(
 ):
     _get_sigma_points = \
         lambda m, chol_P: get_sigma_points(m, chol_P, order)
-
     return quadratize_any(fun, q, _get_sigma_points)
 
 
@@ -84,7 +83,8 @@ def _gauss_hermite_weights(
         base = np.ones(shape=(1, p ** (n - i - 1)))
         for j in range(1, p):
             base = np.concatenate(
-                [base, (j + 1) * np.ones(shape=(1, p ** (n - i - 1)))], axis=1
+                [base, (j + 1) * np.ones(shape=(1, p ** (n - i - 1)))],
+                axis=1
             )
         table[n - i - 1, :] = np.tile(base, (1, int(p**i)))
 
@@ -103,7 +103,7 @@ def _hermite_coeff(order: int) -> List:
 
     H = [H0, H1]
 
-    for i in range(2, order + 1):
+    for i in range(2, order+1):
         H.append(
             2 * np.append(H[i - 1], 0)
             - 2 * (i - 1) * np.pad(H[i - 2], (2, 0), "constant", constant_values=0)
