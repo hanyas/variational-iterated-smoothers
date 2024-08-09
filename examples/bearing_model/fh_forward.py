@@ -8,12 +8,12 @@ from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import GaussMarkov
 
 from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
-from varsmooth.smoothers.forward_markov import forward_pass
+from varsmooth.smoothers.forward_markov import forward_std_message
 
-from varsmooth.approximation import cubature_linearization
-from varsmooth.approximation.bayes_gauss_newton import get_log_prior
-from varsmooth.approximation.bayes_gauss_newton import get_log_transition
-from varsmooth.approximation.bayes_gauss_newton import get_log_observation
+from varsmooth.approximation import cubature_quadratizaiton
+from varsmooth.approximation.fourier_hermite import get_log_prior
+from varsmooth.approximation.fourier_hermite import get_log_transition
+from varsmooth.approximation.fourier_hermite import get_log_observation
 
 from bearing_model import get_data, make_parameters
 
@@ -66,9 +66,9 @@ init_posterior = GaussMarkov(
     )
 )
 
-log_prior_fn = lambda q: get_log_prior(prior_dist, q, cubature_linearization)
-log_transition_fn = lambda q: get_log_transition(transition_model, q, cubature_linearization)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, cubature_linearization)
+log_prior_fn = lambda q: get_log_prior(prior_dist, q, cubature_quadratizaiton)
+log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, cubature_quadratizaiton)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, cubature_quadratizaiton)
 
 forward_markov = iterated_forward_markov_smoother(
     jnp.array(observations),
@@ -76,11 +76,11 @@ forward_markov = iterated_forward_markov_smoother(
     log_transition_fn,
     log_observation_fn,
     init_posterior,
-    kl_constraint=100,
+    kl_constraint=10,
     init_temperature=1e2,
     nb_iter=100,
 )
-marginals = forward_pass(forward_markov)
+marginals = forward_std_message(forward_markov)
 
 plt.figure(figsize=(7, 7))
 plt.plot(
