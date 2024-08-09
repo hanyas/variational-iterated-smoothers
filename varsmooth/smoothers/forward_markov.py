@@ -13,7 +13,8 @@ from varsmooth.objects import (
     LogTransition,
     LogObservation,
     Potential,
-    LogMarginalNorm
+    LogMarginalNorm,
+    LogConditionalNorm
 )
 from varsmooth.smoothers.utils import (
     kl_between_marginals,
@@ -23,7 +24,8 @@ from varsmooth.utils import (
     none_or_concat,
     none_or_shift,
     none_or_idx,
-    symmetrize
+    symmetrize,
+    eig
 )
 
 import jaxopt
@@ -32,13 +34,13 @@ _logdet = lambda x: jnp.linalg.slogdet(x)[1]
 
 
 @jax.jit
-def backward_pass(
+def backward_log_message(
     log_prior: LogPrior,
     log_transition: LogTransition,
     log_observation: LogObservation,
     nominal_posterior: GaussMarkov,
     damping: float,
-) -> (GaussMarkov, LogMarginalNorm):
+) -> (GaussMarkov, LogMarginalNorm, Potential, LogConditionalNorm):
 
     def _backward(carry, args):
         R, r, rho = carry
@@ -86,7 +88,12 @@ def backward_pass(
         d = jsc.linalg.solve(G11, g1, assume_a="pos")
         Sigma = jsc.linalg.inv(G11)
 
-        return Potential(R, r, rho), AffineGaussian(F, d, Sigma)
+        potential = Potential(R, r, rho)
+        return potential, (
+            potential,
+            AffineGaussian(F, d, Sigma),
+            LogConditionalNorm(S, s, xi)
+        )
 
     last_log_observation = none_or_idx(log_observation, -1)
     last_potential = Potential(
@@ -103,12 +110,13 @@ def backward_pass(
 
     nominal_marginal, nominal_kernels = nominal_posterior
 
-    first_potential, kernels = jax.lax.scan(
+    first_potential, (potentials, kernels, log_cond_norms) = jax.lax.scan(
         f=_backward,
         init=last_potential,
         xs=(*log_transition, *_log_aux_observation, *nominal_kernels),
         reverse=True,
     )
+    potentials = none_or_concat(potentials, last_potential, -1)
 
     # get initial marginal
     R, r, rho = first_potential
@@ -146,11 +154,16 @@ def backward_pass(
         + 0.5 * _logdet(2 * jnp.pi * jsc.linalg.inv(J11))
         + 0.5 * j1.T @ jsc.linalg.solve(J11, j1, assume_a="pos")
     )
+    return (
+        GaussMarkov(marginal, kernels),
+        LogMarginalNorm(U, u, eta),
+        potentials,
+        log_cond_norms
+    )
 
-    return GaussMarkov(marginal, kernels), LogMarginalNorm(U, u, eta)
 
-
-def forward_pass(posterior: GaussMarkov) -> Gaussian:
+@jax.jit
+def forward_std_message(posterior: GaussMarkov) -> Gaussian:
     init_marginal, kernels = posterior
 
     def _forward(carry, args):
@@ -179,7 +192,7 @@ def forward_markov_smoother(
     temperature: float
 ) -> GaussMarkov:
 
-    marginals = forward_pass(reference_posterior)
+    marginals = forward_std_message(reference_posterior)
 
     log_prior, log_transition, log_observation = \
         statistical_expansion(
@@ -192,7 +205,7 @@ def forward_markov_smoother(
         )
 
     damping = temperature / (1.0 + temperature)
-    posterior, _ = backward_pass(
+    posterior, _, _, _ = backward_log_message(
         log_prior,
         log_transition,
         log_observation,
@@ -211,7 +224,7 @@ def dual_objective(
     temperature: float,
 ):
     damping = temperature / (1.0 + temperature)
-    posterior, lognorm = backward_pass(
+    posterior, lognorm, _, _ = backward_log_message(
         log_prior,
         log_transition,
         log_observation,
@@ -233,7 +246,7 @@ def vanilla_objective(
     log_observation: LogObservation,
     reference_posterior: GaussMarkov,
 ):
-    _, lognorm = backward_pass(
+    _, lognorm, _, _ = backward_log_message(
         log_prior,
         log_transition,
         log_observation,
@@ -257,7 +270,7 @@ def optimize_temperature(
 
     def dual_objective(temperature):
         damping = temperature / (1.0 + temperature)
-        posterior, lognorm = backward_pass(
+        posterior, lognorm, _, _ = backward_log_message(
             log_prior,
             log_transition,
             log_observation,
@@ -301,7 +314,7 @@ def iterated_forward_markov_smoother(
     for i in range(nb_iter):
         reference = optimal_posterior
 
-        marginals = forward_pass(reference)
+        marginals = forward_std_message(reference)
         log_prior, log_transition, log_observation = \
             statistical_expansion(
                 observations,
@@ -322,7 +335,7 @@ def iterated_forward_markov_smoother(
         )
 
         optimal_damping = optimal_temperature / (1.0 + optimal_temperature)
-        optimal_posterior, _ = backward_pass(
+        optimal_posterior, _, _, _ = backward_log_message(
             log_prior,
             log_transition,
             log_observation,
@@ -331,7 +344,7 @@ def iterated_forward_markov_smoother(
         )
 
         kl_div = kl_between_gauss_markovs(
-            marginals=forward_pass(optimal_posterior),
+            marginals=forward_std_message(optimal_posterior),
             gauss_markov=optimal_posterior,
             ref_gauss_markov=reference
         )
@@ -396,7 +409,7 @@ def iterated_forward_markov_smoother(
 #         reference = carry
 #         iter = args
 #
-#         marginals = forward_pass(reference)
+#         marginals = forward_std_message(reference)
 #         log_prior, log_transition, log_observation = \
 #             statistical_expansion(
 #                 observations,
@@ -424,7 +437,7 @@ def iterated_forward_markov_smoother(
 #         )
 #
 #         damping = temperature / (1.0 + temperature)
-#         posterior, _ = backward_pass(
+#         posterior, _, _, _ = backward_log_message(
 #             log_prior,
 #             log_transition,
 #             log_observation,
@@ -433,7 +446,7 @@ def iterated_forward_markov_smoother(
 #         )
 #
 #         kl_div = kl_between_gauss_markovs(
-#             marginals=forward_pass(posterior),
+#             marginals=forward_std_message(posterior),
 #             gauss_markov=posterior,
 #             ref_gauss_markov=reference
 #         )

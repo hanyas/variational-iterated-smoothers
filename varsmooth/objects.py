@@ -53,6 +53,12 @@ class GaussMarkov(NamedTuple):
     kernels: AffineGaussian
 
 
+class LogConditionalNorm(NamedTuple):
+    S: jnp.ndarray
+    s: jnp.ndarray
+    xi: jnp.ndarray
+
+
 class LogMarginalNorm(NamedTuple):
     U: jnp.ndarray
     u: jnp.ndarray
