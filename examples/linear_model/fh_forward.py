@@ -42,7 +42,7 @@ observation_model = AdditiveGaussianModel(
 )
 
 xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps, random_state=1)
-rts_smoothed = rts_smoother(
+rts_marginals = rts_smoother(
     ys,
     prior_dist,
     AffineGaussian(
@@ -83,10 +83,10 @@ forward_markov = forward_markov_smoother(
     init_posterior,
     0.0
 )
-var_smoothed = forward_std_message(forward_markov)
+var_marginals = forward_std_message(forward_markov)
 
-np.testing.assert_allclose(rts_smoothed.mean, var_smoothed.mean, rtol=1e-3, atol=1e-3)
-np.testing.assert_allclose(rts_smoothed.cov, var_smoothed.cov, rtol=1e-3, atol=1e-3)
+np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
+np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)
 
 # iterated smoother
 forward_markov = iterated_forward_markov_smoother(
@@ -99,7 +99,7 @@ forward_markov = iterated_forward_markov_smoother(
     init_temperature=1e2,
     nb_iter=50,
 )
-var_smoothed = forward_std_message(forward_markov)
+var_marginals = forward_std_message(forward_markov)
 
-np.testing.assert_allclose(rts_smoothed.mean, var_smoothed.mean, rtol=1e-3, atol=1e-3)
-np.testing.assert_allclose(rts_smoothed.cov, var_smoothed.cov, rtol=1e-3, atol=1e-3)
+np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
+np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)

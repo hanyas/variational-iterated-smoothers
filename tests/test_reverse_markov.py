@@ -9,7 +9,7 @@ from varsmooth.objects import GaussMarkov
 from varsmooth.objects import AdditiveGaussianModel
 
 from varsmooth.smoothers.reverse_markov import reverse_markov_smoother
-from varsmooth.smoothers.reverse_markov import backward_pass
+from varsmooth.smoothers.reverse_markov import backward_std_message
 
 from tests.lgssm import simulate
 from tests.test_utils import generate_system
@@ -51,7 +51,7 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
     )
 
     xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps)
-    rts_smoothed = rts_smoother(
+    rts_marginals = rts_smoother(
         ys,
         prior_dist,
         AffineGaussian(
@@ -91,10 +91,10 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
         init_posterior,
         0.0
     )
-    var_smoothed = backward_pass(reverse_markov)
+    var_marginals = backward_std_message(reverse_markov)
 
-    np.testing.assert_allclose(rts_smoothed.mean, var_smoothed.mean, rtol=1e-3, atol=1e-3)
-    np.testing.assert_allclose(rts_smoothed.cov, var_smoothed.cov, rtol=1e-3, atol=1e-3)
+    np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
+    np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)
 
 
 @pytest.mark.parametrize("dim_x", [1, 2, 3])
@@ -102,7 +102,7 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
 @pytest.mark.parametrize("seed", [0, 13, 42])
 def test_fh_fwd_smoother(dim_x, dim_y, seed):
 
-    from varsmooth.approximation import gauss_hermite_quadratzation
+    from varsmooth.approximation import gauss_hermite_quadratization
     from varsmooth.approximation.fourier_hermite import get_log_prior
     from varsmooth.approximation.fourier_hermite import get_log_transition
     from varsmooth.approximation.fourier_hermite import get_log_observation
@@ -124,7 +124,7 @@ def test_fh_fwd_smoother(dim_x, dim_y, seed):
     )
 
     xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps)
-    rts_smoothed = rts_smoother(
+    rts_marginals = rts_smoother(
         ys,
         prior_dist,
         AffineGaussian(
@@ -152,9 +152,9 @@ def test_fh_fwd_smoother(dim_x, dim_y, seed):
         )
     )
 
-    log_prior_fn = lambda q: get_log_prior(prior_dist, q, gauss_hermite_quadratzation)
-    log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, gauss_hermite_quadratzation)
-    log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, gauss_hermite_quadratzation)
+    log_prior_fn = lambda q: get_log_prior(prior_dist, q, gauss_hermite_quadratization)
+    log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, gauss_hermite_quadratization)
+    log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, gauss_hermite_quadratization)
 
     reverse_markov = reverse_markov_smoother(
         ys,
@@ -164,7 +164,7 @@ def test_fh_fwd_smoother(dim_x, dim_y, seed):
         init_posterior,
         0.0
     )
-    var_smoothed = backward_pass(reverse_markov)
+    var_marginals = backward_std_message(reverse_markov)
 
-    np.testing.assert_allclose(rts_smoothed.mean, var_smoothed.mean, rtol=1e-3, atol=1e-3)
-    np.testing.assert_allclose(rts_smoothed.cov, var_smoothed.cov, rtol=1e-3, atol=1e-3)
+    np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
+    np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)
