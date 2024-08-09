@@ -14,7 +14,7 @@ from varsmooth.approximation.sigma_points import quadratize_any
 
 def quadratize(
     fun: Callable,
-    q: Gaussian
+    q: Gaussian,
 ):
     return quadratize_any(fun, q, get_sigma_points)
 
