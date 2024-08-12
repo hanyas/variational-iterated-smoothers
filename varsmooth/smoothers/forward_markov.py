@@ -28,12 +28,12 @@ from varsmooth.utils import (
     eig
 )
 
-import jaxopt
+from varsmooth.smoothers.utils import line_search
 
 _logdet = lambda x: jnp.linalg.slogdet(x)[1]
 
 
-@jax.jit
+# @jax.jit
 def backward_log_message(
     log_prior: LogPrior,
     log_transition: LogTransition,
@@ -47,11 +47,6 @@ def backward_log_message(
         C11, C12, C21, C22, c1, c2, kappa, \
             L, l, nu, \
             F, d, Sigma = args
-
-        # vals, vecs = eig(C11)
-        # real_vals = jnp.clip(jnp.real(vals), 1e-4, jnp.inf)
-        # real_vecs = jnp.real(vecs)
-        # C11 = real_vecs @ jnp.diag(real_vals) @ real_vecs.T
 
         G11 = (1.0 - damping) * (C11 + R) + damping * jsc.linalg.inv(Sigma)
         G22 = (1.0 - damping) * C22 + damping * F.T @ jsc.linalg.solve(Sigma, F)
@@ -67,32 +62,52 @@ def backward_log_message(
         G11 = symmetrize(G11)
         G22 = symmetrize(G22)
 
-        # vals, vecs = eig(G11)
-        # real_vals = jnp.clip(jnp.real(vals), 1e-4, jnp.inf)
-        # real_vecs = jnp.real(vecs)
-        # G11 = real_vecs @ jnp.diag(real_vals) @ real_vecs.T
+        def _feasible_backward_pass():
+            S = G22 - G12.T @ jsc.linalg.solve(G11, G12)
+            s = g2 + G12.T @ jsc.linalg.solve(G11, g1)
+            xi = (
+                theta
+                + 0.5 * _logdet(2 * jnp.pi * jsc.linalg.inv(G11))
+                + 0.5 * g1.T @ jsc.linalg.solve(G11, g1)
+            )
 
-        S = G22 - G12.T @ jsc.linalg.solve(G11, G12, assume_a="pos")
-        s = g2 + G12.T @ jsc.linalg.solve(G11, g1, assume_a="pos")
-        xi = (
-            theta
-            + 0.5 * _logdet(2 * jnp.pi * jsc.linalg.inv(G11))
-            + 0.5 * g1.T @ jsc.linalg.solve(G11, g1, assume_a="pos")
-        )
+            F = jsc.linalg.solve(G11, G12)
+            d = jsc.linalg.solve(G11, g1)
+            Sigma = jsc.linalg.inv(G11)
 
-        R = L + 1.0 / (1.0 - damping) * S
-        r = l + 1.0 / (1.0 - damping) * s
-        rho = nu + 1.0 / (1.0 - damping) * xi
+            R = L + 1.0 / (1.0 - damping) * S
+            r = l + 1.0 / (1.0 - damping) * s
+            rho = nu + 1.0 / (1.0 - damping) * xi
 
-        F = jsc.linalg.solve(G11, G12, assume_a="pos")
-        d = jsc.linalg.solve(G11, g1, assume_a="pos")
-        Sigma = jsc.linalg.inv(G11)
+            potential = Potential(R, r, rho)
+            return potential, (
+                potential,
+                AffineGaussian(F, d, Sigma),
+                LogConditionalNorm(S, s, xi),
+                True  # feasible
+            )
 
-        potential = Potential(R, r, rho)
-        return potential, (
-            potential,
-            AffineGaussian(F, d, Sigma),
-            LogConditionalNorm(S, s, xi)
+        def _not_feasible_backward_pass():
+            S = jnp.zeros_like(G22)
+            s = jnp.zeros_like(g2)
+            xi = jnp.zeros_like(theta)
+
+            R = jnp.zeros_like(L)
+            r = jnp.zeros_like(l)
+            rho = jnp.zeros_like(nu)
+
+            potential = Potential(R, r, rho)
+            return potential, (
+                potential,
+                AffineGaussian(F, d, Sigma),
+                LogConditionalNorm(S, s, xi),
+                False   # Not feasible
+            )
+
+        return jax.lax.cond(
+            pred=jnp.all(eig(G11)[0] > 1e-8),
+            true_fun=_feasible_backward_pass,
+            false_fun=_not_feasible_backward_pass,
         )
 
     last_log_observation = none_or_idx(log_observation, -1)
@@ -110,7 +125,7 @@ def backward_log_message(
 
     nominal_marginal, nominal_kernels = nominal_posterior
 
-    first_potential, (potentials, kernels, log_cond_norms) = jax.lax.scan(
+    first_potential, (potentials, kernels, log_cond_norms, feasible_pass) = jax.lax.scan(
         f=_backward,
         init=last_potential,
         xs=(*log_transition, *_log_aux_observation, *nominal_kernels),
@@ -118,7 +133,6 @@ def backward_log_message(
     )
     potentials = none_or_concat(potentials, last_potential, -1)
 
-    # get initial marginal
     R, r, rho = first_potential
 
     m, P = nominal_marginal
@@ -128,41 +142,55 @@ def backward_log_message(
     J12 = damping * inv_P
     J22 = damping * inv_P
     j1 = (1.0 - damping) * r
-    j2 = jnp.zeros((1,))
+    j2 = jnp.zeros_like(j1)
     tau = (
-        (1.0 - damping) * rho
-        - 0.5 * damping * _logdet(2 * jnp.pi * P)
+            (1.0 - damping) * rho
+            - 0.5 * damping * _logdet(2 * jnp.pi * P)
     )
 
     J11 = symmetrize(J11)
     J22 = symmetrize(J22)
 
-    # vals, vecs = eig(J11)
-    # real_vals = jnp.clip(jnp.real(vals), 1e-4, jnp.inf)
-    # real_vecs = jnp.real(vecs)
-    # J11 = real_vecs @ jnp.diag(real_vals) @ real_vecs.T
+    def _feasible_marginal():
+        # init marginal
+        _m = jsc.linalg.solve(J11, j1 + damping * inv_P @ m)
+        _P = jsc.linalg.inv(J11)
 
-    m = jsc.linalg.solve(J11, j1, assume_a="pos")
-    P = jsc.linalg.inv(J11)
-    marginal = Gaussian(m, P)
+        # log normalizer
+        U = J22 - J12.T @ jsc.linalg.solve(J11, J12)
+        u = j2 + J12.T @ jsc.linalg.solve(J11, j1)
+        eta = (
+            tau
+            + 0.5 * _logdet(2 * jnp.pi * jsc.linalg.inv(J11))
+            + 0.5 * j1.T @ jsc.linalg.solve(J11, j1)
+        )
+        return Gaussian(_m, _P), LogMarginalNorm(U, u, eta)
 
-    # get log normalizer
-    U = J22 - J12.T @ jsc.linalg.solve(J11, J12, assume_a="pos")
-    u = j2 + J12.T @ jsc.linalg.solve(J11, j1, assume_a="pos")
-    eta = (
-        tau
-        + 0.5 * _logdet(2 * jnp.pi * jsc.linalg.inv(J11))
-        + 0.5 * j1.T @ jsc.linalg.solve(J11, j1, assume_a="pos")
+    def _not_feasible_marginal():
+        _m = jnp.zeros_like(nominal_marginal.mean)
+        _P = jnp.zeros_like(nominal_marginal.cov)
+        marginal = Gaussian(_m, _P)
+
+        U = jnp.zeros_like(J22)
+        u = jnp.zeros_like(j2)
+        eta = jnp.zeros_like(tau)
+        return Gaussian(_m, _P), LogMarginalNorm(U, u, eta)
+
+    marginal, log_marg_norm = jax.lax.cond(
+        pred=jnp.all(feasible_pass),
+        true_fun=_feasible_marginal,
+        false_fun=_not_feasible_marginal,
     )
     return (
         GaussMarkov(marginal, kernels),
-        LogMarginalNorm(U, u, eta),
+        log_marg_norm,
         potentials,
-        log_cond_norms
+        log_cond_norms,
+        feasible_pass
     )
 
 
-@jax.jit
+# @jax.jit
 def forward_std_message(posterior: GaussMarkov) -> Gaussian:
     init_marginal, kernels = posterior
 
@@ -205,7 +233,7 @@ def forward_markov_smoother(
         )
 
     damping = temperature / (1.0 + temperature)
-    posterior, _, _, _ = backward_log_message(
+    posterior, _, _, _, _ = backward_log_message(
         log_prior,
         log_transition,
         log_observation,
@@ -221,10 +249,9 @@ def dual_objective(
     log_observation: LogObservation,
     reference_posterior: GaussMarkov,
     kl_constraint: float,
-    temperature: float,
+    damping: float,
 ):
-    damping = temperature / (1.0 + temperature)
-    posterior, lognorm, _, _ = backward_log_message(
+    posterior, lognorm, _, _, feasible = backward_log_message(
         log_prior,
         log_transition,
         log_observation,
@@ -232,12 +259,22 @@ def dual_objective(
         damping,
     )
 
-    U, u, eta = lognorm
-    m, _ = reference_posterior.marginal
+    def _feasible_objective():
+        U, u, eta = lognorm
+        m, _ = reference_posterior.marginal
 
-    dual_value = damping * kl_constraint
-    dual_value += - 0.5 * m.T @ U @ m + m.T @ u + eta
-    return dual_value / (1.0 - damping)
+        dual_value = damping * kl_constraint
+        dual_value += - 0.5 * m.T @ U @ m + m.T @ u + eta
+        return dual_value / (1.0 - damping)
+
+    def _not_feasible_objective():
+        return jnp.inf
+
+    return jax.lax.cond(
+        pred=jnp.all(feasible),
+        true_fun=_feasible_objective,
+        false_fun=_not_feasible_objective
+    )
 
 
 def vanilla_objective(
@@ -246,7 +283,7 @@ def vanilla_objective(
     log_observation: LogObservation,
     reference_posterior: GaussMarkov,
 ):
-    _, lognorm, _, _ = backward_log_message(
+    _, lognorm, _, _, _ = backward_log_message(
         log_prior,
         log_transition,
         log_observation,
@@ -259,46 +296,7 @@ def vanilla_objective(
     return - 0.5 * m.T @ U @ m + m.T @ u + eta
 
 
-def optimize_temperature(
-    log_prior: LogPrior,
-    log_transition: LogTransition,
-    log_observation: LogObservation,
-    reference_posterior: GaussMarkov,
-    kl_constraint: float,
-    init_temperature: float,
-) -> (float, float):
-
-    def dual_objective(temperature):
-        damping = temperature / (1.0 + temperature)
-        posterior, lognorm, _, _ = backward_log_message(
-            log_prior,
-            log_transition,
-            log_observation,
-            reference_posterior,
-            damping,
-        )
-
-        U, u, eta = lognorm
-        m, _ = reference_posterior.marginal
-
-        dual_value = damping * kl_constraint
-        dual_value += - 0.5 * m.T @ U @ m + m.T @ u + eta
-        return dual_value / (1.0 - damping)
-
-    dual_opt = jaxopt.ScipyBoundedMinimize(
-        fun=dual_objective,
-        method="L-BFGS-B",
-        tol=1e-3,
-        maxiter=500,
-        jit=False,
-    )
-
-    result = dual_opt.run(init_temperature, bounds=(1e-16, 1e16))
-    dual_value = result.state.fun_val
-    opt_temperature = result.params
-    return opt_temperature, dual_value
-
-
+@partial(jax.jit, static_argnums=(1, 2, 3, 5, 6, 7))
 def iterated_forward_markov_smoother(
     observations: jnp.ndarray,
     log_prior_fn: Callable,
@@ -307,12 +305,13 @@ def iterated_forward_markov_smoother(
     init_posterior: GaussMarkov,
     kl_constraint: float,
     init_temperature: float,
-    nb_iter: int
+    max_iter: int
 ):
     optimal_posterior = init_posterior
 
-    for i in range(nb_iter):
-        reference = optimal_posterior
+    def _iteration(carry, args):
+        reference = carry
+        i = args
 
         marginals = forward_std_message(reference)
         log_prior, log_transition, log_observation = \
@@ -325,145 +324,89 @@ def iterated_forward_markov_smoother(
                 marginals,
             )
 
-        optimal_temperature, dual_value = optimize_temperature(
-            log_prior,
-            log_transition,
-            log_observation,
-            reference,
-            kl_constraint,
-            init_temperature
+        def dual_fn(_temperature):
+            _damping = _temperature / (1.0 + _temperature)
+            return dual_objective(
+                log_prior,
+                log_transition,
+                log_observation,
+                reference,
+                kl_constraint,
+                _damping,
+            )
+
+        def dual_gd(_temperature):
+            _damping = _temperature / (1.0 + _temperature)
+            _posterior, _, _, _, _feasible_pass = backward_log_message(
+                log_prior,
+                log_transition,
+                log_observation,
+                reference,
+                _damping,
+            )
+
+            def _feasible_constraint():
+                _kl_div = kl_between_forward_gauss_markovs(
+                    marginals=forward_std_message(_posterior),
+                    gauss_markov=_posterior,
+                    ref_gauss_markov=reference
+                )
+                return kl_constraint - _kl_div
+
+            def _not_feasible_constraint():
+                return jnp.inf
+
+            return jax.lax.cond(
+                pred=jnp.all(_feasible_pass),
+                true_fun=_feasible_constraint,
+                false_fun=_not_feasible_constraint
+            )
+
+        temperature, dual_val, _, feasible = line_search(
+            init_temperature, dual_fn, dual_gd, rtol=0.1 * kl_constraint
         )
 
-        optimal_damping = optimal_temperature / (1.0 + optimal_temperature)
-        optimal_posterior, _, _, _ = backward_log_message(
-            log_prior,
-            log_transition,
-            log_observation,
-            reference,
-            optimal_damping,
-        )
+        def _feasible_line_search():
+            _damping = temperature / (1.0 + temperature)
+            _posterior, _, _, _, _ = backward_log_message(
+                log_prior,
+                log_transition,
+                log_observation,
+                reference,
+                _damping,
+            )
 
-        kl_div = kl_between_gauss_markovs(
-            marginals=forward_std_message(optimal_posterior),
-            gauss_markov=optimal_posterior,
-            ref_gauss_markov=reference
-        )
-        print(
-            f"iter: {i:d}, damping: {optimal_damping:.3f}, "
-            f"kl_div: {kl_div:.3f}, dual: {dual_value:.3f}"
-        )
+            _kl_div = kl_between_forward_gauss_markovs(
+                marginals=forward_std_message(_posterior),
+                gauss_markov=_posterior,
+                ref_gauss_markov=reference
+            )
+            jax.debug.print(
+                "iter: {a}, damping: {b}, kl_div: {c}, dual: {d}",
+                a=i, b=_damping, c=_kl_div, d=dual_val
+            )
+            return _posterior
 
+        def _not_feasible_line_search():
+            jax.debug.print(
+                "iter: {a} not feasible, process might have converged", a=i
+            )
+            return reference
+
+        optimal_posterior = jax.lax.cond(
+            pred=feasible,
+            true_fun=_feasible_line_search,
+            false_fun=_not_feasible_line_search
+        )
+        return optimal_posterior, optimal_posterior
+
+    optimal_posterior, _ = jax.lax.scan(
+        _iteration, init_posterior, xs=jnp.arange(max_iter)
+    )
     return optimal_posterior
 
 
-# def optimize_temperature(
-#     log_prior: LogPrior,
-#     log_transition: LogTransition,
-#     log_observation: LogObservation,
-#     reference_posterior: GaussMarkov,
-#     kl_constraint: float,
-#     init_temperature: float,
-# ) -> (float, float):
-#
-#     def dual_fn(temperature):
-#         _temperature = jnp.squeeze(temperature)
-#         return dual_objective(
-#             log_prior,
-#             log_transition,
-#             log_observation,
-#             reference_posterior,
-#             kl_constraint,
-#             _temperature,
-#         )
-#
-#     dual_opt = jaxopt.LBFGSB(
-#         fun=dual_fn,
-#         tol=1e-3,
-#         maxiter=500,
-#         jit=True,
-#     )
-#
-#     params, opt_state = dual_opt.run(
-#         init_params=jnp.atleast_1d(init_temperature),
-#         bounds=(1e-16, 1e16)
-#     )
-#
-#     dual_value = opt_state.value
-#     opt_temperature = jnp.squeeze(params)
-#     return opt_temperature, dual_value
-#
-#
-# @partial(jax.jit, static_argnums=(1, 2, 3, 5, 6, 7))
-# def iterated_forward_markov_smoother(
-#     observations: jnp.ndarray,
-#     log_prior_fn: Callable,
-#     log_transition_fn: Callable,
-#     log_observation_fn: Callable,
-#     init_posterior: GaussMarkov,
-#     kl_constraint: float,
-#     init_temperature: float,
-#     nb_iter: int
-# ):
-#
-#     def _iteration(carry, args):
-#         reference = carry
-#         iter = args
-#
-#         marginals = forward_std_message(reference)
-#         log_prior, log_transition, log_observation = \
-#             statistical_expansion(
-#                 observations,
-#                 log_prior_fn,
-#                 log_transition_fn,
-#                 log_observation_fn,
-#                 reference.kernels,
-#                 marginals,
-#             )
-#
-#         objective = vanilla_objective(
-#             log_prior,
-#             log_transition,
-#             log_observation,
-#             reference,
-#         )
-#
-#         temperature, _ = optimize_temperature(
-#             log_prior,
-#             log_transition,
-#             log_observation,
-#             reference,
-#             kl_constraint,
-#             init_temperature
-#         )
-#
-#         damping = temperature / (1.0 + temperature)
-#         posterior, _, _, _ = backward_log_message(
-#             log_prior,
-#             log_transition,
-#             log_observation,
-#             reference,
-#             damping,
-#         )
-#
-#         kl_div = kl_between_gauss_markovs(
-#             marginals=forward_std_message(posterior),
-#             gauss_markov=posterior,
-#             ref_gauss_markov=reference
-#         )
-#         jax.debug.print(
-#             "iter: {a}, damping: {b}, kl_div: {c}",
-#             a=iter, b=damping, c=kl_div
-#         )
-#
-#         return posterior, posterior
-#
-#     posterior, _ = jax.lax.scan(
-#         f=_iteration, init=init_posterior, xs=jnp.arange(nb_iter)
-#     )
-#     return posterior
-
-
-def kl_between_gauss_markovs(
+def kl_between_forward_gauss_markovs(
     marginals, gauss_markov, ref_gauss_markov
 ):
     dim = gauss_markov.marginal.mean.shape[0]

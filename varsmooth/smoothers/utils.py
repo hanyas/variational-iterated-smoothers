@@ -1,9 +1,11 @@
-from typing import Callable
+from typing import Callable, Tuple, NamedTuple
 from functools import partial
 
 import jax
 from jax import numpy as jnp
 from jax import scipy as jsc
+
+from jaxopt._src.loop import while_loop as while_with_maxiter
 
 from varsmooth.objects import (
     Gaussian,
@@ -149,3 +151,156 @@ def log_to_std_form(
         mean=jsc.linalg.inv(potential.R) @ potential.r,
         cov=jsc.linalg.inv(potential.R)
     )
+
+
+class ParamStruct(NamedTuple):
+    val: float
+    min: float
+    max: float
+
+
+class LineSearchState(NamedTuple):
+    param: ParamStruct
+    fn_val: float
+    gd_val: float
+    feasible: bool
+
+
+def line_search(
+    init_param: float,
+    fun: Callable,
+    grad: Callable,
+    rtol=0.1,
+    min_param=1e-4,
+    max_param=1e14,
+    max_iter=100,
+) -> (float, float, float):
+
+    state = LineSearchState(
+        param=ParamStruct(
+            val=init_param,
+            min=min_param,
+            max=max_param,
+        ),
+        fn_val=jnp.inf,
+        gd_val=jnp.inf,
+        feasible=False,
+    )
+
+    param = ParamStruct(
+        val=init_param,
+        min=min_param,
+        max=max_param,
+    )
+
+    def regularize(args):
+        param, state = args
+        return increase_param(param), state
+
+    def update(args):
+        param, state = args
+
+        fn_val = fun(param.val)
+        gd_val = grad(param.val)
+
+        state = jax.lax.cond(
+            jnp.abs(gd_val) < jnp.abs(state.gd_val),
+            lambda _: LineSearchState(param, fn_val, gd_val, True),
+            lambda _: state,
+            None
+        )
+
+        param = jax.lax.cond(
+            pred=gd_val > 0.0,
+            true_fun=reduce_param,
+            false_fun=increase_param,
+            operand=param
+        )
+        return param, state
+
+    def _iteration(carry):
+        param, state = carry
+
+        fn_val = fun(param.val)
+        gd_val = grad(param.val)
+
+        nan_condition = jnp.logical_or(jnp.isnan(fn_val), jnp.isnan(gd_val))
+        inf_condition = jnp.logical_or(jnp.isinf(fn_val), jnp.isinf(gd_val))
+
+        return jax.lax.cond(
+            pred=jnp.logical_or(nan_condition, inf_condition),
+            true_fun=regularize,
+            false_fun=update,
+            operand=(param, state)
+        )
+
+    _, state = while_with_maxiter(
+        cond_fun=lambda x: jnp.abs(x[-1].gd_val) > rtol,
+        body_fun=_iteration,
+        init_val=(param, state),
+        maxiter=max_iter,
+        jit=True,
+    )
+    return state.param.val, state.fn_val, state.gd_val, state.feasible
+
+
+def reduce_param(param) -> ParamStruct:
+    # set max to current value
+    return ParamStruct(
+        val=jnp.sqrt(param.min * param.val),
+        min=param.min,
+        max=param.val
+    )
+
+
+def increase_param(param) -> ParamStruct:
+    # set min to current value
+    return ParamStruct(
+        val=jnp.sqrt(param.val * param.max),
+        min=param.val,
+        max=param.max
+    )
+
+
+# def line_search(
+#     param: float,
+#     fun: Callable,
+#     grad: Callable,
+#     rtol=0.1,
+#     max_iters=100,
+#     verbose=False,
+# ) -> (float, float, float):
+#     min_param = 1e-4
+#     max_param = 1e14
+#
+#     best_param = param
+#     best_fun_val = jnp.inf
+#     best_grad_val = jnp.inf
+#     for k in range(max_iters):
+#         fun_val, grad_val = fun(param), grad(param)
+#
+#         if verbose:
+#             print(param, min_param, max_param, fun_val, grad_val)
+#
+#         if jnp.logical_or(
+#             jnp.logical_or(jnp.isnan(fun_val), jnp.isnan(grad_val)),
+#             jnp.logical_or(jnp.isinf(fun_val), jnp.isinf(grad_val))
+#         ):
+#             min_param = param
+#             param = jnp.sqrt(min_param * max_param)
+#         else:
+#             if grad_val < best_grad_val:
+#                 best_param = param
+#                 best_fun_val = fun_val
+#                 best_grad_val = grad_val
+#             if jnp.abs(grad_val) <= rtol:
+#                 return param, fun_val, grad_val
+#             else:
+#                 if grad_val > 0.0:  # param too large
+#                     max_param = param
+#                     param = jnp.sqrt(min_param * max_param)
+#                 else:               # param too small
+#                     min_param = param
+#                     param = jnp.sqrt(min_param * max_param)
+#
+#     return best_param, best_fun_val, best_grad_val
