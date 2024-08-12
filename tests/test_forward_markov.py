@@ -29,7 +29,7 @@ def config():
 @pytest.mark.parametrize("seed", [0, 13, 42])
 def test_pl_fwd_smoother(dim_x, dim_y, seed):
 
-    from varsmooth.approximation import gauss_hermite_linearization
+    from varsmooth.approximation import gauss_hermite_linearization as linearize
     from varsmooth.approximation.posterior_linearization import get_log_prior
     from varsmooth.approximation.posterior_linearization import get_log_transition
     from varsmooth.approximation.posterior_linearization import get_log_observation
@@ -79,9 +79,9 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
         )
     )
 
-    log_prior_fn = lambda q: get_log_prior(prior_dist, q, gauss_hermite_linearization)
-    log_transition_fn = lambda q, _: get_log_transition(transition_model, q, gauss_hermite_linearization)
-    log_observation_fn = lambda y, q: get_log_observation(ys, observation_model, q, gauss_hermite_linearization)
+    log_prior_fn = lambda q: get_log_prior(prior_dist, q, linearize)
+    log_transition_fn = lambda q, _: get_log_transition(transition_model, q, linearize)
+    log_observation_fn = lambda y, q: get_log_observation(ys, observation_model, q, linearize)
 
     forward_markov = forward_markov_smoother(
         ys,
@@ -102,7 +102,7 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
 @pytest.mark.parametrize("seed", [0, 13, 42])
 def test_fh_fwd_smoother(dim_x, dim_y, seed):
 
-    from varsmooth.approximation import gauss_hermite_quadratization
+    from varsmooth.approximation import gauss_hermite_quadratization as quadratize
     from varsmooth.approximation.fourier_hermite import get_log_prior
     from varsmooth.approximation.fourier_hermite import get_log_transition
     from varsmooth.approximation.fourier_hermite import get_log_observation
@@ -152,9 +152,9 @@ def test_fh_fwd_smoother(dim_x, dim_y, seed):
         )
     )
 
-    log_prior_fn = lambda q: get_log_prior(prior_dist, q, gauss_hermite_quadratization)
-    log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, gauss_hermite_quadratization)
-    log_observation_fn = lambda y, q: get_log_observation(ys, observation_model, q, gauss_hermite_quadratization)
+    log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
+    log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
+    log_observation_fn = lambda y, q: get_log_observation(ys, observation_model, q, quadratize)
 
     forward_markov = forward_markov_smoother(
         ys,

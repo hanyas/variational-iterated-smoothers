@@ -144,8 +144,8 @@ def backward_log_message(
     j1 = (1.0 - damping) * r
     j2 = jnp.zeros_like(j1)
     tau = (
-            (1.0 - damping) * rho
-            - 0.5 * damping * _logdet(2 * jnp.pi * P)
+        (1.0 - damping) * rho
+        - 0.5 * damping * _logdet(2 * jnp.pi * P)
     )
 
     J11 = symmetrize(J11)
