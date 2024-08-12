@@ -12,10 +12,10 @@ from varsmooth.smoothers.reverse_markov import backward_std_message
 from varsmooth.smoothers.forward_markov import forward_std_message
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
 
-from varsmooth.approximation import gauss_hermite_linearization
-from varsmooth.approximation.posterior_linearization import get_log_prior
-from varsmooth.approximation.posterior_linearization import get_log_transition
-from varsmooth.approximation.posterior_linearization import get_log_observation
+from varsmooth.approximation import gauss_hermite_quadratization as quadratize
+from varsmooth.approximation.fourier_hermite import get_log_prior
+from varsmooth.approximation.fourier_hermite import get_log_transition
+from varsmooth.approximation.fourier_hermite import get_log_observation
 
 from bearing_model import get_data, make_parameters
 
@@ -71,9 +71,9 @@ forward_marginals = forward_std_message(forward_markov)
 
 init_posterior = initialize_reverse_with_forward(forward_markov)
 
-log_prior_fn = lambda q: get_log_prior(prior_dist, q, gauss_hermite_linearization)
-log_transition_fn = lambda q, _: get_log_transition(transition_model, q, gauss_hermite_linearization)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, gauss_hermite_linearization)
+log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
+log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
 
 reverse_markov = iterated_reverse_markov_smoother(
     jnp.array(observations),
@@ -81,9 +81,9 @@ reverse_markov = iterated_reverse_markov_smoother(
     log_transition_fn,
     log_observation_fn,
     init_posterior,
-    kl_constraint=500,
-    init_temperature=1e2,
-    nb_iter=100,
+    kl_constraint=1.0,
+    init_temperature=1e12,
+    max_iter=250
 )
 marginals = backward_std_message(reverse_markov)
 

@@ -6,9 +6,9 @@ from varsmooth.objects import AffineGaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.objects import AdditiveGaussianModel
 
-from varsmooth.smoothers.two_filter_smoother import log_two_filter_smoother
+from varsmooth.smoothers.log_two_filter import log_two_filter_smoother
+from varsmooth.smoothers.log_two_filter import iterated_log_two_filter_smoother
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
-from varsmooth.smoothers.forward_markov import forward_std_message
 
 from varsmooth.approximation import gauss_hermite_linearization
 from varsmooth.approximation.posterior_linearization import get_log_prior
@@ -85,6 +85,21 @@ var_marginals = log_two_filter_smoother(
     init_fwd_posterior,
     init_rvs_posterior,
     0.0
+)
+
+np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
+np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)
+
+var_marginals = iterated_log_two_filter_smoother(
+    ys,
+    log_prior_fn,
+    log_transition_fn,
+    log_observation_fn,
+    init_fwd_posterior,
+    init_rvs_posterior,
+    kl_constraint=125.0,
+    init_temperature=1e2,
+    nb_iter=100,
 )
 
 np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
