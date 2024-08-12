@@ -48,7 +48,6 @@ def get_log_transition(
 
     logpdf = lambda z: f.logpdf(z[:dim], z[dim:])
     C, c, kappa = method(logpdf, q)
-
     return LogTransition(
         C11=C[:dim, :dim],
         C12=-C[:dim, dim:],

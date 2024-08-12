@@ -113,5 +113,3 @@ def quadratize_any(f, q, get_sigma_points):
 #     Fx = jsc.linalg.solve(chol_x.T, b.T).T - jsc.linalg.solve(Q, m_x)
 #     Fxx = - jsc.linalg.inv(Q)
 #     return Fxx, Fx, f0
-
-
