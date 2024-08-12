@@ -10,7 +10,7 @@ from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
 from varsmooth.smoothers.forward_markov import forward_std_message
 
-from varsmooth.approximation import cubature_quadratizaiton
+from varsmooth.approximation import gauss_hermite_quadratization as quadratize
 from varsmooth.approximation.fourier_hermite import get_log_prior
 from varsmooth.approximation.fourier_hermite import get_log_transition
 from varsmooth.approximation.fourier_hermite import get_log_observation
@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 jax.config.update("jax_platform_name", "cpu")
 jax.config.update("jax_enable_x64", True)
 # jax.config.update('jax_disable_jit', True)
-
+# jax.config.update("jax_debug_nans", True)
 
 s1 = jnp.array([-1.5, 0.5])  # First sensor location
 s2 = jnp.array([1.0, 1.0])  # Second sensor location
@@ -66,9 +66,9 @@ init_posterior = GaussMarkov(
     )
 )
 
-log_prior_fn = lambda q: get_log_prior(prior_dist, q, cubature_quadratizaiton)
-log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, cubature_quadratizaiton)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, cubature_quadratizaiton)
+log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
+log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
 
 forward_markov = iterated_forward_markov_smoother(
     jnp.array(observations),
@@ -76,9 +76,9 @@ forward_markov = iterated_forward_markov_smoother(
     log_transition_fn,
     log_observation_fn,
     init_posterior,
-    kl_constraint=10,
-    init_temperature=1e2,
-    nb_iter=100,
+    kl_constraint=1,
+    init_temperature=1e6,
+    max_iter=250
 )
 marginals = forward_std_message(forward_markov)
 

@@ -10,7 +10,7 @@ from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
 from varsmooth.smoothers.forward_markov import forward_std_message
 
-from varsmooth.approximation import cubature_linearization
+from varsmooth.approximation import gauss_hermite_linearization as linearize
 from varsmooth.approximation.posterior_linearization import get_log_prior
 from varsmooth.approximation.posterior_linearization import get_log_transition
 from varsmooth.approximation.posterior_linearization import get_log_observation
@@ -66,9 +66,9 @@ init_posterior = GaussMarkov(
     )
 )
 
-log_prior_fn = lambda q: get_log_prior(prior_dist, q, cubature_linearization)
-log_transition_fn = lambda q, _: get_log_transition(transition_model, q, cubature_linearization)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, cubature_linearization)
+log_prior_fn = lambda q: get_log_prior(prior_dist, q, linearize)
+log_transition_fn = lambda q, _: get_log_transition(transition_model, q, linearize)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, linearize)
 
 forward_markov = iterated_forward_markov_smoother(
     jnp.array(observations),
@@ -78,7 +78,7 @@ forward_markov = iterated_forward_markov_smoother(
     init_posterior,
     kl_constraint=100,
     init_temperature=1e2,
-    nb_iter=100,
+    max_iter=100
 )
 marginals = forward_std_message(forward_markov)
 
