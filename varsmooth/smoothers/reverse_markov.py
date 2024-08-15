@@ -298,7 +298,6 @@ def iterated_reverse_markov_smoother(
     init_temperature: float,
     max_iter: int
 ):
-    optimal_posterior = init_posterior
 
     def _iteration(carry, args):
         reference = carry

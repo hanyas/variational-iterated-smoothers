@@ -9,8 +9,9 @@ from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.smoothers.log_two_filter import log_two_filter_smoother
 from varsmooth.smoothers.log_two_filter import iterated_log_two_filter_smoother
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
+from varsmooth.smoothers.forward_markov import forward_std_message
 
-from varsmooth.approximation import gauss_hermite_linearization
+from varsmooth.approximation import gauss_hermite_linearization as linearize
 from varsmooth.approximation.posterior_linearization import get_log_prior
 from varsmooth.approximation.posterior_linearization import get_log_transition
 from varsmooth.approximation.posterior_linearization import get_log_observation
@@ -72,11 +73,11 @@ init_fwd_posterior = GaussMarkov(
 
 init_rvs_posterior = initialize_reverse_with_forward(init_fwd_posterior)
 
-log_prior_fn = lambda q: get_log_prior(prior_dist, q, gauss_hermite_linearization)
-log_transition_fn = lambda q, _: get_log_transition(transition_model, q, gauss_hermite_linearization)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, gauss_hermite_linearization)
+log_prior_fn = lambda q: get_log_prior(prior_dist, q, linearize)
+log_transition_fn = lambda q, _: get_log_transition(transition_model, q, linearize)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, linearize)
 
-# single iteration
+# single iteration with no damping
 var_marginals = log_two_filter_smoother(
     ys,
     log_prior_fn,
@@ -90,6 +91,21 @@ var_marginals = log_two_filter_smoother(
 np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
 np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)
 
+# single iteration maximum damping
+var_marginals = log_two_filter_smoother(
+    ys,
+    log_prior_fn,
+    log_transition_fn,
+    log_observation_fn,
+    init_fwd_posterior,
+    init_rvs_posterior,
+    1e14,
+)
+init_marginals = forward_std_message(init_fwd_posterior)
+
+np.testing.assert_allclose(init_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
+np.testing.assert_allclose(init_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)
+
 var_marginals = iterated_log_two_filter_smoother(
     ys,
     log_prior_fn,
@@ -97,9 +113,9 @@ var_marginals = iterated_log_two_filter_smoother(
     log_observation_fn,
     init_fwd_posterior,
     init_rvs_posterior,
-    kl_constraint=125.0,
-    init_temperature=1e2,
-    nb_iter=100,
+    kl_constraint=100.0,
+    init_temperature=1e6,
+    max_iter=100,
 )
 
 np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)

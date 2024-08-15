@@ -87,6 +87,18 @@ def initialize_reverse_with_forward(
     return reverse_markov
 
 
+def get_marginal(
+    marginal: Gaussian,
+    kernel: AffineGaussian
+):
+    m, P = marginal
+    F, d, Sigma = kernel
+    return Gaussian(
+        mean=F @ m + d,
+        cov=F @ P @ F.T + Sigma
+    )
+
+
 def get_pairwise_marginal(
     marginal: Gaussian,
     kernel: AffineGaussian
@@ -138,9 +150,9 @@ def merge_messages(
     bwd_message: LogConditionalNorm,
 ) -> Potential:
     return Potential(
-        R=fwd_message.R + bwd_message.S,
-        r=fwd_message.r + bwd_message.s,
-        rho=fwd_message.rho + bwd_message.xi,
+        R=(fwd_message.R + bwd_message.S),
+        r=(fwd_message.r + bwd_message.s),
+        rho=(fwd_message.rho + bwd_message.xi),
     )
 
 
@@ -150,6 +162,19 @@ def log_to_std_form(
     return Gaussian(
         mean=jsc.linalg.inv(potential.R) @ potential.r,
         cov=jsc.linalg.inv(potential.R)
+    )
+
+
+def std_to_log_form(
+    dist: Gaussian
+) -> Potential:
+    return Potential(
+        R=jsc.linalg.inv(dist.cov),
+        r=jsc.linalg.solve(dist.cov, dist.mean),
+        rho=(
+            - 0.5 * _logdet(2 * jnp.pi * dist.cov)
+            - 0.5 * dist.mean.T @ jsc.linalg.solve(dist.cov, dist.mean)
+        )
     )
 
 

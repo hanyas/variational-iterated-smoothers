@@ -1,5 +1,7 @@
 from .forward_markov import forward_markov_smoother
 from .reverse_markov import reverse_markov_smoother
+from .log_two_filter import log_two_filter_smoother
 
 from .forward_markov import iterated_forward_markov_smoother
 from .reverse_markov import iterated_reverse_markov_smoother
+from .log_two_filter import iterated_log_two_filter_smoother
