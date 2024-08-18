@@ -12,8 +12,7 @@ from varsmooth.objects import (
     LogTransition,
     LogObservation,
 )
-
-_logdet = lambda x: jnp.linalg.slogdet(x)[1]
+from varsmooth.utils import logdet
 
 
 def get_log_prior(
@@ -26,7 +25,7 @@ def get_log_prior(
         L=jsc.linalg.inv(Lambda),
         l=jsc.linalg.solve(Lambda, mu),
         nu=(
-            - 0.5 * _logdet(2 * jnp.pi * Lambda)
+            - 0.5 * logdet(2 * jnp.pi * Lambda)
             - 0.5 * mu.T @ jsc.linalg.solve(Lambda, mu)
         )
     )
@@ -48,7 +47,7 @@ def get_log_transition(
         c1=jsc.linalg.solve(Omega, b),
         c2=-A.T @ jsc.linalg.solve(Omega, b),
         kappa=(
-            - 0.5 * _logdet(2 * jnp.pi * Omega)
+            - 0.5 * logdet(2 * jnp.pi * Omega)
             - 0.5 * b.T @ jsc.linalg.solve(Omega, b)
         ),
     )
@@ -67,7 +66,7 @@ def get_log_observation(
         L=H.T @ jsc.linalg.solve(Delta, H),
         l=H.T @ jsc.linalg.solve(Delta, y - e),
         nu=(
-            - 0.5 * _logdet(2 * jnp.pi * Delta)
+            - 0.5 * logdet(2 * jnp.pi * Delta)
             - 0.5 * (y - e).T @ jsc.linalg.solve(Delta, y - e)
         )
     )

@@ -13,8 +13,6 @@ from varsmooth.objects import (
     LogObservation,
 )
 
-_logdet = lambda x: jnp.linalg.slogdet(x)[1]
-
 
 def get_log_prior(
     prior_dist: Gaussian,

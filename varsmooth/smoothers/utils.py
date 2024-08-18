@@ -17,9 +17,7 @@ from varsmooth.objects import (
     Potential,
     LogConditionalNorm
 )
-from varsmooth.utils import none_or_idx, none_or_shift
-
-_logdet = lambda x: jnp.linalg.slogdet(x)[1]
+from varsmooth.utils import none_or_idx, none_or_shift, logdet
 
 
 def kl_between_marginals(p, q):
@@ -27,7 +25,7 @@ def kl_between_marginals(p, q):
     return 0.5 * (
         jnp.trace(jsc.linalg.inv(q.cov) @ p.cov) - dim
         + (q.mean - p.mean).T @ jsc.linalg.solve(q.cov, q.mean - p.mean)
-        + _logdet(q.cov) - _logdet(p.cov)
+        + logdet(q.cov) - logdet(p.cov)
     )
 
 
@@ -172,10 +170,68 @@ def std_to_log_form(
         R=jsc.linalg.inv(dist.cov),
         r=jsc.linalg.solve(dist.cov, dist.mean),
         rho=(
-            - 0.5 * _logdet(2 * jnp.pi * dist.cov)
+            - 0.5 * logdet(2 * jnp.pi * dist.cov)
             - 0.5 * dist.mean.T @ jsc.linalg.solve(dist.cov, dist.mean)
         )
     )
+
+
+def _kl_between_gauss_markovs(
+    marginals: Gaussian,
+    gauss_markov: GaussMarkov,
+    ref_gauss_markov: GaussMarkov,
+    reverse: bool = False,
+):
+    dim = gauss_markov.marginal.mean.shape[0]
+
+    def body(carry, args):
+        kl_value = carry
+        m, P, \
+            F, d, Sigma, \
+            ref_F, ref_d, ref_Sigma = args
+
+        diff_F = (ref_F - F).T @ jsc.linalg.solve(ref_Sigma, ref_F - F)
+        diff_d = (ref_d - d).T @ jsc.linalg.solve(ref_Sigma, ref_d - d)
+        diff_cross = (ref_F - F).T @ jsc.linalg.solve(ref_Sigma, ref_d - d)
+
+        kl_value += (
+            0.5 * jnp.trace(diff_F @ P)
+            + 0.5 * m.T @ diff_F @ m
+            + m.T @ diff_cross
+            + 0.5 * diff_d
+            + 0.5 * jnp.trace(jsc.linalg.solve(ref_Sigma, Sigma))
+            - 0.5 * dim
+            + 0.5 * logdet(ref_Sigma) - 0.5 * logdet(Sigma)
+        )
+        return kl_value, kl_value
+
+    init_kl_value = kl_between_marginals(
+        gauss_markov.marginal, ref_gauss_markov.marginal
+    )
+
+    kl_value, _ = jax.lax.scan(
+        f=body,
+        init=init_kl_value,
+        xs=(
+            *none_or_shift(marginals, 1),
+            *gauss_markov.kernels,
+            *ref_gauss_markov.kernels
+        ),
+        reverse=reverse,
+    )
+    return kl_value
+
+
+def kl_between_reverse_gauss_markovs(
+    marginals, gauss_markov, ref_gauss_markov
+):
+    return _kl_between_gauss_markovs(marginals, gauss_markov, ref_gauss_markov, True)
+
+
+def kl_between_forward_gauss_markovs(
+    marginals, gauss_markov, ref_gauss_markov
+):
+    return _kl_between_gauss_markovs(marginals, gauss_markov, ref_gauss_markov, False)
 
 
 class ParamStruct(NamedTuple):

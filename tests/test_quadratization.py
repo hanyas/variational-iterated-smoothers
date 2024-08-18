@@ -6,13 +6,12 @@ import jax.numpy as jnp
 import numpy as np
 import scipy as sc
 
+from varsmooth.utils import logdet
 from varsmooth.objects import Gaussian
 from varsmooth.objects import AdditiveGaussianModel
-from varsmooth.approximation import gauss_hermite_quadratzation as gauss_hermite
+from varsmooth.approximation import gauss_hermite_quadratization as gauss_hermite
 
 from tests.test_utils import generate_system
-
-_logdet = lambda x: np.linalg.slogdet(x)[1]
 
 QUADRATIZATION_METHODS = [gauss_hermite]
 
@@ -78,7 +77,7 @@ def test_log_observation_additive(dim_y, dim_x, seed, method):
     L = H.T @ sc.linalg.solve(Delta, H)
     l = H.T @ sc.linalg.solve(Delta, y - e)
     nu = (
-        - 0.5 * _logdet(2 * jnp.pi * Delta)
+        - 0.5 * logdet(2 * jnp.pi * Delta)
         - 0.5 * (y - e).T @ sc.linalg.solve(Delta, y - e)
     )
 
@@ -121,7 +120,7 @@ def test_log_transition_additive(dim_x, seed, method):
     c1 = sc.linalg.solve(Omega, b)
     c2 = -A.T @ sc.linalg.solve(Omega, b)
     kappa = (
-        - 0.5 * _logdet(2 * jnp.pi * Omega)
+        - 0.5 * logdet(2 * jnp.pi * Omega)
         - 0.5 * b.T @ sc.linalg.solve(Omega, b)
     )
 

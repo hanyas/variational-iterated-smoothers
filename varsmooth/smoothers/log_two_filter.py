@@ -3,17 +3,11 @@ from functools import partial
 
 import jax
 from jax import numpy as jnp
-from jax import scipy as jsc
 
 from varsmooth.objects import (
     Gaussian,
-    AffineGaussian,
     GaussMarkov,
-    LogPrior,
-    LogTransition,
-    LogObservation,
     Potential,
-    LogMarginalNorm,
     LogConditionalNorm
 )
 from varsmooth.smoothers.utils import (
@@ -21,14 +15,14 @@ from varsmooth.smoothers.utils import (
     merge_messages,
     log_to_std_form,
     std_to_log_form,
-    line_search
+    line_search,
+    kl_between_reverse_gauss_markovs,
+    kl_between_forward_gauss_markovs
 )
 from varsmooth.utils import (
     none_or_concat,
     none_or_shift,
-    none_or_idx,
-    symmetrize,
-    eig
+    logdet
 )
 
 from varsmooth.smoothers.forward_markov import backward_log_message
@@ -37,10 +31,6 @@ from varsmooth.smoothers.reverse_markov import forward_log_message
 from varsmooth.smoothers.reverse_markov import backward_std_message
 
 from varsmooth.smoothers.reverse_markov import dual_objective
-from varsmooth.smoothers.reverse_markov import kl_between_reverse_gauss_markovs
-from varsmooth.smoothers.forward_markov import kl_between_forward_gauss_markovs
-
-_logdet = lambda x: jnp.linalg.slogdet(x)[1]
 
 
 def log_two_filter_smoother(
@@ -138,6 +128,7 @@ def update_marginals(
     return jax.vmap(log_to_std_form)(potentials)
 
 
+@partial(jax.jit, static_argnums=(1, 2, 3, 6, 7, 8))
 def iterated_log_two_filter_smoother(
     observations: jnp.ndarray,
     log_prior_fn: Callable,

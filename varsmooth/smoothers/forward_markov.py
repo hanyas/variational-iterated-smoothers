@@ -16,21 +16,19 @@ from varsmooth.objects import (
     LogMarginalNorm,
     LogConditionalNorm
 )
-from varsmooth.smoothers.utils import (
-    kl_between_marginals,
-    statistical_expansion
-)
+from varsmooth.smoothers.utils import statistical_expansion
+from varsmooth.smoothers.utils import kl_between_forward_gauss_markovs
+
 from varsmooth.utils import (
     none_or_concat,
     none_or_shift,
     none_or_idx,
     symmetrize,
-    eig
+    eig,
+    logdet
 )
 
 from varsmooth.smoothers.utils import line_search
-
-_logdet = lambda x: jnp.linalg.slogdet(x)[1]
 
 
 # @jax.jit
@@ -55,7 +53,7 @@ def backward_log_message(
         g2 = (1.0 - damping) * c2 - damping * F.T @ jsc.linalg.solve(Sigma, d)
         theta = (
             (1.0 - damping) * (kappa + rho)
-            - 0.5 * damping * _logdet(2 * jnp.pi * Sigma)
+            - 0.5 * damping * logdet(2 * jnp.pi * Sigma)
             - 0.5 * damping * d.T @ jsc.linalg.solve(Sigma, d)
         )
 
@@ -67,7 +65,7 @@ def backward_log_message(
             s = g2 + G12.T @ jsc.linalg.solve(G11, g1)
             xi = (
                 theta
-                + 0.5 * _logdet(2 * jnp.pi * jsc.linalg.inv(G11))
+                + 0.5 * logdet(2 * jnp.pi * jsc.linalg.inv(G11))
                 + 0.5 * g1.T @ jsc.linalg.solve(G11, g1)
             )
 
@@ -145,7 +143,7 @@ def backward_log_message(
     j2 = jnp.zeros_like(j1)
     tau = (
         (1.0 - damping) * rho
-        - 0.5 * damping * _logdet(2 * jnp.pi * P)
+        - 0.5 * damping * logdet(2 * jnp.pi * P)
     )
 
     J11 = symmetrize(J11)
@@ -153,7 +151,7 @@ def backward_log_message(
 
     def _feasible_marginal():
         # init marginal
-        _m = jsc.linalg.solve(J11, j1 + damping * inv_P @ m)
+        _m = jsc.linalg.solve(J11, j1 + J12 @ m)
         _P = jsc.linalg.inv(J11)
 
         # log normalizer
@@ -161,7 +159,7 @@ def backward_log_message(
         u = j2 + J12.T @ jsc.linalg.solve(J11, j1)
         eta = (
             tau
-            + 0.5 * _logdet(2 * jnp.pi * jsc.linalg.inv(J11))
+            + 0.5 * logdet(2 * jnp.pi * jsc.linalg.inv(J11))
             + 0.5 * j1.T @ jsc.linalg.solve(J11, j1)
         )
         return Gaussian(_m, _P), LogMarginalNorm(U, u, eta)
@@ -403,44 +401,3 @@ def iterated_forward_markov_smoother(
         _iteration, init_posterior, xs=jnp.arange(max_iter)
     )
     return optimal_posterior
-
-
-def kl_between_forward_gauss_markovs(
-    marginals, gauss_markov, ref_gauss_markov
-):
-    dim = gauss_markov.marginal.mean.shape[0]
-
-    def body(carry, args):
-        kl_value = carry
-        m, P, F, d, Sigma, \
-            ref_F, ref_d, ref_Sigma = args
-
-        diff_F = (ref_F - F).T @ jsc.linalg.solve(ref_Sigma, ref_F - F)
-        diff_d = (ref_d - d).T @ jsc.linalg.solve(ref_Sigma, ref_d - d)
-        diff_cross = (ref_F - F).T @ jsc.linalg.solve(ref_Sigma, ref_d - d)
-
-        kl_value += (
-            0.5 * jnp.trace(diff_F @ P)
-            + 0.5 * m.T @ diff_F @ m
-            + m.T @ diff_cross
-            + 0.5 * diff_d
-            + 0.5 * jnp.trace(jsc.linalg.solve(ref_Sigma, Sigma))
-            - 0.5 * dim
-            + 0.5 * _logdet(ref_Sigma) - 0.5 * _logdet(Sigma)
-        )
-        return kl_value, kl_value
-
-    init_kl_value = kl_between_marginals(
-        gauss_markov.marginal, ref_gauss_markov.marginal
-    )
-
-    kl_value, _ = jax.lax.scan(
-        f=body,
-        init=init_kl_value,
-        xs=(
-            *none_or_shift(marginals, -1),
-            *gauss_markov.kernels,
-            *ref_gauss_markov.kernels
-        )
-    )
-    return kl_value

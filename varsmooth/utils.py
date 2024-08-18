@@ -6,6 +6,10 @@ import jax.numpy as jnp
 from jax import custom_jvp
 
 
+def logdet(A):
+    return jnp.linalg.slogdet(A)[1]
+
+
 def symmetrize(A):
     return 0.5 * (A.T + A)
 
