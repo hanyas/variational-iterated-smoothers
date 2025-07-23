@@ -37,7 +37,7 @@ def statistical_expansion(
     log_observation_fn: Callable,
     posterior_kernels: AffineGaussian,
     posterior_marginals: Gaussian
-) -> (LogPrior, LogTransition, LogObservation):
+) -> Tuple[LogPrior, LogTransition, LogObservation]:
 
     init_marginal = none_or_idx(posterior_marginals, 0)
     prev_marginals = none_or_shift(posterior_marginals, -1)
@@ -255,7 +255,7 @@ def line_search(
     min_param=1e-4,
     max_param=1e14,
     max_iter=100,
-) -> (float, float, float):
+) -> Tuple[float, float, float, bool]:
 
     state = LineSearchState(
         param=ParamStruct(

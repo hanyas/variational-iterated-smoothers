@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Tuple
 from functools import partial
 
 import jax
@@ -36,7 +36,7 @@ def forward_log_message(
     log_observation: LogObservation,
     nominal_posterior: GaussMarkov,
     damping: float,
-) -> (GaussMarkov, LogMarginalNorm, Potential, LogConditionalNorm):
+) -> Tuple[GaussMarkov, LogMarginalNorm, Potential, LogConditionalNorm, bool]:
 
     def _forward(carry, args):
         R, r, rho = carry
@@ -126,11 +126,11 @@ def forward_log_message(
     m, P = nominal_marginal
     inv_P = jsc.linalg.inv(P)
 
-    J11 = (1.0 - damping) * R + damping * inv_P
-    J12 = damping * inv_P
-    J22 = damping * inv_P
-    j1 = (1.0 - damping) * r
-    j2 = jnp.zeros_like(j1)
+    J11 = damping * inv_P
+    J21 = damping * inv_P
+    J22 = (1.0 - damping) * R + damping * inv_P
+    j2 = (1.0 - damping) * r
+    j1 = jnp.zeros_like(j2)
     tau = (
         (1.0 - damping) * rho
         - 0.5 * damping * logdet(2 * jnp.pi * P)
@@ -141,16 +141,16 @@ def forward_log_message(
 
     def _feasible_marginal():
         # init marginal
-        _m = jsc.linalg.solve(J11, j1 + J12 @ m)
-        _P = jsc.linalg.inv(J11)
+        _m = jsc.linalg.solve(J22, j2 + J21 @ m)
+        _P = jsc.linalg.inv(J22)
 
         # log normalizer
-        U = J22 - J12.T @ jsc.linalg.solve(J11, J12)
-        u = j2 + J12.T @ jsc.linalg.solve(J11, j1)
+        U = J11 - J21.T @ jsc.linalg.solve(J22, J21)
+        u = j1 - J21.T @ jsc.linalg.solve(J22, j2)
         eta = (
             tau
-            + 0.5 * logdet(2 * jnp.pi * jsc.linalg.inv(J11))
-            + 0.5 * j1.T @ jsc.linalg.solve(J11, j1)
+            + 0.5 * logdet(2 * jnp.pi * jsc.linalg.inv(J22))
+            + 0.5 * j2.T @ jsc.linalg.solve(J22, j2)
         )
         return Gaussian(_m, _P), LogMarginalNorm(U, u, eta)
 
@@ -159,8 +159,8 @@ def forward_log_message(
         _P = jnp.zeros_like(nominal_marginal.cov)
         marginal = Gaussian(_m, _P)
 
-        U = jnp.zeros_like(J22)
-        u = jnp.zeros_like(j2)
+        U = jnp.zeros_like(J11)
+        u = jnp.zeros_like(j1)
         eta = jnp.zeros_like(tau)
         return Gaussian(_m, _P), LogMarginalNorm(U, u, eta)
 
@@ -368,9 +368,16 @@ def iterated_reverse_markov_smoother(
                 gauss_markov=_posterior,
                 ref_gauss_markov=reference
             )
+
+            _obj_val = vanilla_objective(
+                log_prior,
+                log_transition,
+                log_observation,
+                _posterior
+            )
             jax.debug.print(
-                "iter: {a}, damping: {b}, kl_div: {c}, dual: {d}",
-                a=i, b=_damping, c=_kl_div, d=dual_val
+                "iter: {a}, damping: {b}, kl_div: {c}, dual: {d}, val: {v}",
+                a=i, b=_damping, c=_kl_div, d=dual_val, v=_obj_val
             )
             return _posterior
 

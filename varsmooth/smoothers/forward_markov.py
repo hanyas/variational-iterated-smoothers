@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Tuple
 from functools import partial
 
 import jax
@@ -38,7 +38,7 @@ def backward_log_message(
     log_observation: LogObservation,
     nominal_posterior: GaussMarkov,
     damping: float,
-) -> (GaussMarkov, LogMarginalNorm, Potential, LogConditionalNorm):
+) -> Tuple[GaussMarkov, LogMarginalNorm, Potential, LogConditionalNorm, bool]:
 
     def _backward(carry, args):
         R, r, rho = carry
@@ -156,7 +156,7 @@ def backward_log_message(
 
         # log normalizer
         U = J22 - J12.T @ jsc.linalg.solve(J11, J12)
-        u = j2 + J12.T @ jsc.linalg.solve(J11, j1)
+        u = j2 - J12.T @ jsc.linalg.solve(J11, j1)
         eta = (
             tau
             + 0.5 * logdet(2 * jnp.pi * jsc.linalg.inv(J11))
@@ -378,9 +378,16 @@ def iterated_forward_markov_smoother(
                 gauss_markov=_posterior,
                 ref_gauss_markov=reference
             )
+
+            _obj_val = vanilla_objective(
+                log_prior,
+                log_transition,
+                log_observation,
+                _posterior
+            )
             jax.debug.print(
-                "iter: {a}, damping: {b}, kl_div: {c}, dual: {d}",
-                a=i, b=_damping, c=_kl_div, d=dual_val
+                "iter: {a}, damping: {b}, kl_div: {c}, dual: {d}, val: {v}",
+                a=i, b=_damping, c=_kl_div, d=dual_val, v=_obj_val
             )
             return _posterior
 
