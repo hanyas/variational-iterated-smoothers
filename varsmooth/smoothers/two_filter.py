@@ -22,7 +22,6 @@ from varsmooth.smoothers.utils import (
 from varsmooth.utils import (
     none_or_concat,
     none_or_shift,
-    logdet
 )
 
 from varsmooth.smoothers.forward_markov import backward_log_message
@@ -33,7 +32,7 @@ from varsmooth.smoothers.reverse_markov import backward_std_message
 from varsmooth.smoothers.reverse_markov import dual_objective
 
 
-def log_two_filter_smoother(
+def two_filter_smoother(
     observations: jnp.ndarray,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
@@ -88,6 +87,7 @@ def log_two_filter_smoother(
         marginals,
         forward_message,
         backward_message,
+        forward_posterior.marginal,
         reverse_posterior.marginal,
         damping
     )
@@ -98,38 +98,52 @@ def update_marginals(
     marginals: Gaussian,
     forward_message: Potential,
     backward_message: LogConditionalNorm,
-    boundary: Gaussian,
+    first_boundary: Gaussian,
+    last_boundary: Gaussian,
     damping: float
 ):
     log_marginals = jax.vmap(std_to_log_form)(marginals)
     log_messages = jax.vmap(merge_messages)(
-        none_or_shift(forward_message, -1),
-        backward_message,
-    )
-    log_boundary = std_to_log_form(boundary)
+        none_or_shift(none_or_shift(forward_message, -1), 1),
+        none_or_shift(backward_message, 1),
 
-    # update all but last marginals
+    )
+    log_first_boundary = std_to_log_form(first_boundary)
+    log_last_boundary = std_to_log_form(last_boundary)
+
+    # update all but last marginal
     potentials = Potential(
-        R=(1.0 - damping) * log_messages.R + damping * log_marginals.R[:-1],
-        r=(1.0 - damping) * log_messages.r + damping * log_marginals.r[:-1],
-        rho=(1.0 - damping) * log_messages.rho + damping * log_marginals.rho[:-1]
+        R=(1.0 - damping) * log_messages.R + damping * log_marginals.R[1:-1],
+        r=(1.0 - damping) * log_messages.r + damping * log_marginals.r[1:-1],
+        rho=(1.0 - damping) * log_messages.rho + damping * log_marginals.rho[1:-1]
     )
 
-    # update last marginal
+    # append first marginal
     potentials = none_or_concat(
         potentials,
         Potential(
-            R=(1.0 - damping) * log_boundary.R + damping * log_marginals.R[-1],
-            r=(1.0 - damping) * log_boundary.r + damping * log_marginals.r[-1],
-            rho=(1.0 - damping) * log_boundary.rho + damping * log_marginals.rho[-1]
+            R=log_first_boundary.R,
+            r=log_first_boundary.r,
+            rho=log_first_boundary.rho,
+        ),
+    )
+
+    # append last marginal
+    potentials = none_or_concat(
+        potentials,
+        Potential(
+            R=log_last_boundary.R,
+            r=log_last_boundary.r,
+            rho=log_last_boundary.rho,
         ),
         position=-1
     )
+
     return jax.vmap(log_to_std_form)(potentials)
 
 
 @partial(jax.jit, static_argnums=(1, 2, 3, 6, 7, 8))
-def iterated_log_two_filter_smoother(
+def iterated_two_filter_smoother(
     observations: jnp.ndarray,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
@@ -232,6 +246,7 @@ def iterated_log_two_filter_smoother(
                 reference_marginals,
                 _forward_message,
                 _backward_message,
+                _forward_posterior.marginal,
                 _reverse_posterior.marginal,
                 _damping
             )
