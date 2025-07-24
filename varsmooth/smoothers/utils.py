@@ -252,7 +252,7 @@ def line_search(
     fun: Callable,
     grad: Callable,
     rtol=0.1,
-    min_param=1e-4,
+    min_param=1e-14,
     max_param=1e14,
     max_iter=100,
 ) -> Tuple[float, float, float, bool]:

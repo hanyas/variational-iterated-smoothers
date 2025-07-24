@@ -31,6 +31,8 @@ from varsmooth.smoothers.reverse_markov import backward_std_message
 
 from varsmooth.smoothers.reverse_markov import dual_objective
 
+from jaxopt._src.loop import while_loop as while_with_maxiter
+
 
 def two_filter_smoother(
     observations: jnp.ndarray,
@@ -142,7 +144,15 @@ def update_marginals(
     return jax.vmap(log_to_std_form)(potentials)
 
 
-@partial(jax.jit, static_argnums=(1, 2, 3, 6, 7, 8))
+@partial(jax.jit, static_argnames=[
+    'log_prior_fn', 
+    'log_transition_fn', 
+    'log_observation_fn',
+    'kl_constraint',
+    'init_temperature', 
+    'min_temperature', 
+    'max_iterations'
+])
 def iterated_two_filter_smoother(
     observations: jnp.ndarray,
     log_prior_fn: Callable,
@@ -151,129 +161,212 @@ def iterated_two_filter_smoother(
     init_forward_posterior: GaussMarkov,
     init_reverse_posterior: GaussMarkov,
     kl_constraint: float,
-    init_temperature: float,
-    max_iter: int
+    init_temperature: float = 1e12,
+    min_temperature: float = 1e-12,
+    max_iterations: int = 1000,
 ):
-
-    def _iteration(carry, args):
+    """
+    Iterated two-filter smoother with early stopping based on temperature.
+    
+    This function performs variational inference using both forward and reverse
+    message passing until convergence. The iterations stop when either:
+    1. Maximum iterations are reached, or
+    2. Temperature drops below min_temperature (indicating convergence)
+    
+    Args:
+        observations: Array of observations
+        log_prior_fn: Function to compute log prior
+        log_transition_fn: Function to compute log transition
+        log_observation_fn: Function to compute log observation likelihood
+        init_forward_posterior: Initial forward posterior estimate
+        init_reverse_posterior: Initial reverse posterior estimate
+        kl_constraint: KL divergence constraint for the optimization
+        init_temperature: Initial temperature for line search
+        min_temperature: Minimum temperature threshold for early stopping
+        max_iterations: Maximum number of iterations
+    
+    Returns:
+        Optimal marginals after convergence
+    """
+    
+    def single_iteration(carry, iteration_idx):
+        """
+        Perform a single iteration of the two-filter update.
+        
+        Args:
+            carry: Tuple of (reference_marginals, forward_reference, reverse_reference)
+            iteration_idx: Current iteration index (for logging)
+        
+        Returns:
+            updated_carry: Updated state tuple
+            final_temperature: Temperature from line search
+        """
         reference_marginals, forward_reference, reverse_reference = carry
-        i = args
-
-        log_prior, log_transition, log_observation = \
-            statistical_expansion(
-                observations,
-                log_prior_fn,
-                log_transition_fn,
-                log_observation_fn,
-                forward_reference.kernels,
-                reference_marginals,
-            )
-
-        def dual_fn(_temperature):
-            _damping = _temperature / (1.0 + _temperature)
+        
+        # Step 1: Compute statistical expansion
+        log_prior, log_transition, log_observation = statistical_expansion(
+            observations,
+            log_prior_fn,
+            log_transition_fn,
+            log_observation_fn,
+            forward_reference.kernels,
+            reference_marginals,
+        )
+        
+        # Step 2: Define dual objective function for line search
+        def dual_objective_fn(temperature):
+            """Dual objective function for temperature optimization."""
+            damping = temperature / (1.0 + temperature)
             return dual_objective(
                 log_prior,
                 log_transition,
                 log_observation,
                 reverse_reference,
                 kl_constraint,
-                _damping,
+                damping,
             )
-
-        def dual_gd(_temperature):
-            _damping = _temperature / (1.0 + _temperature)
-            _posterior, _, _, _, _feasible_pass = forward_log_message(
+        
+        # Step 3: Define gradient function for line search
+        def dual_gradient_fn(temperature):
+            """Gradient of dual objective with respect to temperature."""
+            damping = temperature / (1.0 + temperature)
+            posterior, _, _, _, feasible_pass = forward_log_message(
                 log_prior,
                 log_transition,
                 log_observation,
                 reverse_reference,
-                _damping,
+                damping,
             )
-
-            def _feasible_constraint():
-                _kl_div = kl_between_reverse_gauss_markovs(
-                    marginals=backward_std_message(_posterior),
-                    gauss_markov=_posterior,
+            
+            def compute_gradient():
+                """Compute gradient when forward pass is feasible."""
+                kl_div = kl_between_reverse_gauss_markovs(
+                    marginals=backward_std_message(posterior),
+                    gauss_markov=posterior,
                     ref_gauss_markov=reverse_reference
                 )
-                return kl_constraint - _kl_div
-
-            def _not_feasible_constraint():
+                return kl_constraint - kl_div
+            
+            def inf_gradient():
+                """Return infinity when forward pass is not feasible."""
                 return jnp.inf
-
+            
             return jax.lax.cond(
-                pred=jnp.all(_feasible_pass),
-                true_fun=_feasible_constraint,
-                false_fun=_not_feasible_constraint
+                pred=jnp.all(feasible_pass),
+                true_fun=lambda _: compute_gradient(),
+                false_fun=lambda _: inf_gradient(),
+                operand=None
             )
-
-        temperature, dual_val, _, feasible = line_search(
-            init_temperature, dual_fn, dual_gd, rtol=0.1 * kl_constraint
+        
+        # Step 4: Perform line search to find optimal temperature
+        temperature, dual_value, _, line_search_feasible = line_search(
+            init_temperature, 
+            dual_objective_fn, 
+            dual_gradient_fn, 
+            rtol=0.1 * kl_constraint
         )
-
-        def _feasible_line_search():
-            _damping = temperature / (1.0 + temperature)
-
-            _forward_posterior, _, _, _backward_message, _ = backward_log_message(
+        
+        # Step 5: Apply the optimal temperature to get final result
+        def apply_optimal_solution():
+            """Apply the optimal temperature to compute final marginals."""
+            damping = temperature / (1.0 + temperature)
+            
+            # Forward pass
+            forward_posterior, _, _, backward_message, _ = backward_log_message(
                 log_prior,
                 log_transition,
                 log_observation,
                 forward_reference,
-                _damping,
+                damping,
             )
-
-            _reverse_posterior, _, _forward_message, _, _ = forward_log_message(
+            
+            # Reverse pass
+            reverse_posterior, _, forward_message, _, _ = forward_log_message(
                 log_prior,
                 log_transition,
                 log_observation,
                 reverse_reference,
-                _damping,
+                damping,
             )
-
-            _fwd_kl_div = kl_between_forward_gauss_markovs(
-                forward_std_message(_forward_posterior),
-                _forward_posterior,
+            
+            # Compute KL divergences for logging
+            fwd_kl_div = kl_between_forward_gauss_markovs(
+                forward_std_message(forward_posterior),
+                forward_posterior,
                 forward_reference
             )
-
-            _rvs_kl_div = kl_between_reverse_gauss_markovs(
-                backward_std_message(_reverse_posterior),
-                _reverse_posterior,
+            
+            rvs_kl_div = kl_between_reverse_gauss_markovs(
+                backward_std_message(reverse_posterior),
+                reverse_posterior,
                 reverse_reference
             )
-
-            _marginals = update_marginals(
+            
+            # Update marginals
+            updated_marginals = update_marginals(
                 reference_marginals,
-                _forward_message,
-                _backward_message,
-                _forward_posterior.marginal,
-                _reverse_posterior.marginal,
-                _damping
+                forward_message,
+                backward_message,
+                forward_posterior.marginal,
+                reverse_posterior.marginal,
+                damping
             )
-
+            
+            # Log progress
             jax.debug.print(
-                "iter: {a}, damping: {b}, fwd_kl_div: {c}, rvs_kl_div: {d}, dual: {e}",
-                a=i, b=_damping, c=_fwd_kl_div, d=_rvs_kl_div, e=dual_val
+                "iter: {iter}, damping: {damp}, fwd_kl_div: {fwd_kl}, rvs_kl_div: {rvs_kl}, dual: {dual}",
+                iter=iteration_idx,
+                damp=damping,
+                fwd_kl=fwd_kl_div,
+                rvs_kl=rvs_kl_div,
+                dual=dual_value
             )
-            return _marginals, _forward_posterior, _reverse_posterior
-
-        def _not_feasible_line_search():
+            
+            return updated_marginals, forward_posterior, reverse_posterior
+        
+        def use_reference():
+            """Use reference when line search fails."""
             jax.debug.print(
-                "iter: {a} not feasible, process might have converged", a=i
+                "iter: {iter} not feasible, process might have converged", 
+                iter=iteration_idx
             )
             return reference_marginals, forward_reference, reverse_reference
-
-        optimal_marginals, optimal_forward, optimal_reverse = jax.lax.cond(
-            pred=feasible,
-            true_fun=_feasible_line_search,
-            false_fun=_not_feasible_line_search
+        
+        # Choose between optimal solution and reference based on feasibility
+        marginals, forward_post, reverse_post = jax.lax.cond(
+            pred=line_search_feasible,
+            true_fun=lambda _: apply_optimal_solution(),
+            false_fun=lambda _: use_reference(),
+            operand=None
         )
-        return (optimal_marginals, optimal_forward, optimal_reverse), optimal_marginals
-
+        
+        return (marginals, forward_post, reverse_post), temperature
+    
+    def iteration_body(carry):
+        """Body function for the while loop."""
+        current_state, iteration_count, _ = carry
+        next_state, next_temperature = single_iteration(current_state, iteration_count)
+        return next_state, iteration_count + 1, next_temperature
+    
+    def iteration_condition(carry):
+        """Condition function for the while loop."""
+        _, iteration_count, next_temperature = carry
+        # Continue if: not reached max iterations AND temperature is above minimum
+        return jnp.logical_and(iteration_count < max_iterations, next_temperature > min_temperature)
+    
+    # Initialize state
     init_marginals = forward_std_message(init_forward_posterior)
-    (optimal_marginals, _, _), _ = jax.lax.scan(
-        f=_iteration,
-        init=(init_marginals, init_forward_posterior, init_reverse_posterior),
-        xs=jnp.arange(max_iter)
+    init_state = (init_marginals, init_forward_posterior, init_reverse_posterior)
+    
+    # Run the iterative optimization
+    final_state, _, _ = while_with_maxiter(
+        cond_fun=iteration_condition,
+        body_fun=iteration_body,
+        init_val=(init_state, 0, init_temperature),
+        maxiter=max_iterations,
+        jit=True,
     )
+    
+    # Extract final marginals
+    optimal_marginals, _, _ = final_state
     return optimal_marginals
