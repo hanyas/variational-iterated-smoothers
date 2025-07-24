@@ -115,9 +115,8 @@ forward_markov = iterated_forward_markov_smoother(
     log_transition_fn,
     log_observation_fn,
     init_posterior,
-    kl_constraint=100.0,
-    init_temperature=1e2,
-    max_iter=50
+    kl_constraint=100,
+    init_temperature=1e6,
 )
 var_marginals = forward_std_message(forward_markov)
 

@@ -26,11 +26,10 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_platform_name", "cpu")
 # jax.config.update('jax_disable_jit', True)
 
-dim_x, dim_y = 1, 1
-
 np.random.seed(0)
 
-nb_steps = 100
+dim_x, dim_y = 3, 2
+nb_steps = 25
 
 prior_dist, A, b, Omega, _ = generate_system(dim_x, dim_x)
 transition_model = AdditiveGaussianModel(
@@ -44,7 +43,7 @@ observation_model = AdditiveGaussianModel(
     Gaussian(np.zeros((dim_y,)), Delta)
 )
 
-xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps, random_state=13)
+xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps, random_state=1)
 rts_marginals = rts_smoother(
     ys,
     prior_dist,
@@ -121,9 +120,8 @@ reverse_markov = iterated_reverse_markov_smoother(
     log_transition_fn,
     log_observation_fn,
     init_posterior,
-    kl_constraint=100.0,
-    init_temperature=1e2,
-    max_iter=25
+    kl_constraint=100,
+    init_temperature=1e6,
 )
 var_marginals = backward_std_message(reverse_markov)
 

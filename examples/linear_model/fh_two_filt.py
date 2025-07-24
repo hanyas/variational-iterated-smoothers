@@ -11,10 +11,10 @@ from varsmooth.smoothers.two_filter import iterated_two_filter_smoother
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
 from varsmooth.smoothers.forward_markov import forward_std_message
 
-from varsmooth.approximation import gauss_hermite_linearization as linearize
-from varsmooth.approximation.posterior_linearization import get_log_prior
-from varsmooth.approximation.posterior_linearization import get_log_transition
-from varsmooth.approximation.posterior_linearization import get_log_observation
+from varsmooth.approximation import gauss_hermite_quadratization as quadratize
+from varsmooth.approximation.fourier_hermite import get_log_prior
+from varsmooth.approximation.fourier_hermite import get_log_transition
+from varsmooth.approximation.fourier_hermite import get_log_observation
 
 from tests.kalman import rts_smoother
 from tests.lgssm import simulate
@@ -73,9 +73,9 @@ init_fwd_posterior = GaussMarkov(
 
 init_rvs_posterior = initialize_reverse_with_forward(init_fwd_posterior)
 
-log_prior_fn = lambda q: get_log_prior(prior_dist, q, linearize)
-log_transition_fn = lambda q, _: get_log_transition(transition_model, q, linearize)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, linearize)
+log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
+log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
 
 # single iteration with no damping
 var_marginals = two_filter_smoother(
@@ -114,7 +114,7 @@ var_marginals = iterated_two_filter_smoother(
     init_fwd_posterior,
     init_rvs_posterior,
     kl_constraint=100,
-    init_temperature=1e6,
+    init_temperature=1e8,
 )
 
 np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)

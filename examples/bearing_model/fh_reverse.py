@@ -35,7 +35,7 @@ dt = 0.01  # discretization time step
 qc = 0.01  # discretization noise
 qw = 0.1  # discretization noise
 
-nb_steps = 500  # number of observations
+nb_steps = 100  # number of observations
 dim_x, dim_y = 5, 2
 
 _, true_states, observations = get_data(x0, dt, r, nb_steps, s1, s2, random_state=42)
@@ -81,9 +81,8 @@ reverse_markov = iterated_reverse_markov_smoother(
     log_transition_fn,
     log_observation_fn,
     init_posterior,
-    kl_constraint=1.0,
-    init_temperature=1e12,
-    max_iter=250
+    kl_constraint=100,
+    init_temperature=1e6,
 )
 marginals = backward_std_message(reverse_markov)
 

@@ -59,7 +59,7 @@ rts_marginals = rts_smoother(
 
 F = 1e-1 * np.eye(dim_x)
 d = np.zeros((dim_x,))
-Sigma = 1.0 * np.eye(dim_x)
+Sigma = 10.0 * np.eye(dim_x)
 
 init_posterior = GaussMarkov(
     marginal=Gaussian(
@@ -75,7 +75,7 @@ init_posterior = GaussMarkov(
 
 log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
 log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
-log_observation_fn = lambda y, q: get_log_observation(ys, observation_model, q, quadratize)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
 
 # single iteration no damping
 forward_markov = forward_markov_smoother(
@@ -115,9 +115,8 @@ forward_markov = iterated_forward_markov_smoother(
     log_transition_fn,
     log_observation_fn,
     init_posterior,
-    kl_constraint=100.0,
-    init_temperature=1e2,
-    max_iter=25
+    kl_constraint=1000,
+    init_temperature=1e6,
 )
 var_marginals = forward_std_message(forward_markov)
 

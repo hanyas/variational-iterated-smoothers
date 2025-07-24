@@ -21,8 +21,7 @@ import matplotlib.pyplot as plt
 
 jax.config.update("jax_platform_name", "cpu")
 jax.config.update("jax_enable_x64", True)
-# jax.config.update('jax_disable_jit', True)
-# jax.config.update("jax_debug_nans", True)
+
 
 s1 = jnp.array([-1.5, 0.5])  # First sensor location
 s2 = jnp.array([1.0, 1.0])  # Second sensor location
@@ -33,10 +32,10 @@ dt = 0.01  # discretization time step
 qc = 0.01  # discretization noise
 qw = 0.1  # discretization noise
 
-nb_steps = 500  # number of observations
+nb_steps = 100  # number of observations
 dim_x, dim_y = 5, 2
 
-_, true_states, observations = get_data(x0, dt, r, nb_steps, s1, s2, random_state=42)
+_, true_states, observations = get_data(x0, dt, r, nb_steps, s1, s2, random_state=23)
 transition_cov, observation_cov, \
     transition_fn, observation_fn, _, _ = make_parameters(qc, qw, r, dt, s1, s2)
 
@@ -76,9 +75,8 @@ forward_markov = iterated_forward_markov_smoother(
     log_transition_fn,
     log_observation_fn,
     init_posterior,
-    kl_constraint=1,
+    kl_constraint=100,
     init_temperature=1e6,
-    max_iter=250
 )
 marginals = forward_std_message(forward_markov)
 
