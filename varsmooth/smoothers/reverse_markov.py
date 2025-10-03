@@ -2,6 +2,7 @@ from typing import Callable, Tuple
 from functools import partial
 
 import jax
+from jax import Array
 from jax import numpy as jnp
 from jax import scipy as jsc
 
@@ -200,7 +201,7 @@ def backward_std_message(posterior: GaussMarkov) -> Gaussian:
 
 
 def reverse_markov_smoother(
-    observations: jnp.ndarray,
+    observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
     log_observation_fn: Callable,
@@ -221,14 +222,14 @@ def reverse_markov_smoother(
         )
 
     damping = temperature / (1.0 + temperature)
-    posterior, _, _, _, _ = forward_log_message(
+    posterior, log_marginal, _, log_conditionals, _ = forward_log_message(
         log_prior,
         log_transition,
         log_observation,
         reference_posterior,
         damping,
     )
-    return posterior
+    return posterior, log_marginal, log_conditionals
 
 
 def dual_objective(
@@ -285,16 +286,16 @@ def vanilla_objective(
 
 
 @partial(jax.jit, static_argnames=[
-    'log_prior_fn', 
-    'log_transition_fn', 
+    'log_prior_fn',
+    'log_transition_fn',
     'log_observation_fn',
     'kl_constraint',
-    'init_temperature', 
-    'min_temperature', 
+    'init_temperature',
+    'min_temperature',
     'max_iterations'
 ])
 def iterated_reverse_markov_smoother(
-    observations: jnp.ndarray,
+    observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
     log_observation_fn: Callable,
@@ -306,12 +307,12 @@ def iterated_reverse_markov_smoother(
 ):
     """
     Iterated reverse Markov smoother with early stopping based on temperature.
-    
+
     This function performs variational inference by iteratively updating the posterior
     until convergence. The iterations stop when either:
     1. Maximum iterations are reached, or
     2. Temperature drops below min_temperature (indicating convergence)
-    
+
     Args:
         observations: Array of observations
         log_prior_fn: Function to compute log prior
@@ -322,11 +323,11 @@ def iterated_reverse_markov_smoother(
         init_temperature: Initial temperature for line search
         min_temperature: Minimum temperature threshold for early stopping
         max_iterations: Maximum number of iterations
-    
+
     Returns:
         Optimal posterior after convergence
     """
-    
+
     def single_iteration(reference, iteration_idx):
         # Step 1: Compute marginals and statistical expansion
         marginals = backward_std_message(reference)
@@ -338,7 +339,7 @@ def iterated_reverse_markov_smoother(
             reference.kernels,
             marginals,
         )
-        
+
         # Step 2: Define dual objective function for line search
         def dual_objective_fn(temperature):
             """Dual objective function for temperature optimization."""
@@ -351,7 +352,7 @@ def iterated_reverse_markov_smoother(
                 kl_constraint,
                 damping,
             )
-        
+
         # Step 3: Define gradient function for line search
         def dual_gradient_fn(temperature):
             """Gradient of dual objective with respect to temperature."""
@@ -363,7 +364,7 @@ def iterated_reverse_markov_smoother(
                 reference,
                 damping,
             )
-            
+
             def compute_gradient():
                 """Compute gradient when forward pass is feasible."""
                 kl_div = kl_between_reverse_gauss_markovs(
@@ -372,26 +373,26 @@ def iterated_reverse_markov_smoother(
                     ref_gauss_markov=reference
                 )
                 return kl_constraint - kl_div
-            
+
             def inf_gradient():
                 """Return infinity when forward pass is not feasible."""
                 return jnp.inf
-            
+
             return jax.lax.cond(
                 pred=jnp.all(feasible_pass),
                 true_fun=lambda _: compute_gradient(),
                 false_fun=lambda _: inf_gradient(),
                 operand=None
             )
-        
+
         # Step 4: Perform line search to find optimal temperature
         temperature, dual_value, _, line_search_feasible = line_search(
-            init_temperature, 
-            dual_objective_fn, 
-            dual_gradient_fn, 
+            init_temperature,
+            dual_objective_fn,
+            dual_gradient_fn,
             rtol=0.1 * kl_constraint
         )
-        
+
         # Step 5: Apply the optimal temperature to get final posterior
         def apply_optimal_solution():
             """Apply the optimal temperature to compute final posterior."""
@@ -403,14 +404,14 @@ def iterated_reverse_markov_smoother(
                 reference,
                 damping,
             )
-            
+
             # Compute KL divergence for logging
             kl_div = kl_between_reverse_gauss_markovs(
                 marginals=backward_std_message(posterior),
                 gauss_markov=posterior,
                 ref_gauss_markov=reference
             )
-            
+
             # Compute objective value for logging
             obj_value = vanilla_objective(
                 log_prior,
@@ -418,7 +419,7 @@ def iterated_reverse_markov_smoother(
                 log_observation,
                 posterior
             )
-            
+
             # Log progress
             jax.debug.print(
                 "iter: {iter}, damping: {damp}, kl_div: {kl}, dual: {dual}, val: {val}",
@@ -428,17 +429,17 @@ def iterated_reverse_markov_smoother(
                 dual=dual_value,
                 val=obj_value
             )
-            
+
             return posterior
-        
+
         def use_reference():
             """Use reference posterior when line search fails."""
             jax.debug.print(
-                "iter: {iter} not feasible, process might have converged", 
+                "iter: {iter} not feasible, process might have converged",
                 iter=iteration_idx
             )
             return reference
-        
+
         # Choose between optimal solution and reference based on feasibility
         posterior = jax.lax.cond(
             pred=line_search_feasible,
@@ -446,19 +447,19 @@ def iterated_reverse_markov_smoother(
             false_fun=lambda _: use_reference(),
             operand=None
         )
-        
+
         return posterior, temperature
-    
+
     def iteration_body(carry):
         current_posterior, iteration_count, _ = carry
         next_posterior, next_temperature = single_iteration(current_posterior, iteration_count)
         return next_posterior, iteration_count + 1, next_temperature
-    
+
     def iteration_condition(carry):
         _, iteration_count, next_temperature = carry
         # Continue if: not reached max iterations AND temperature is above minimum
         return jnp.logical_and(iteration_count < max_iterations, next_temperature > min_temperature)
-    
+
     # Run the iterative optimization
     optimal_posterior, _, _ = while_with_maxiter(
         cond_fun=iteration_condition,
@@ -467,5 +468,5 @@ def iterated_reverse_markov_smoother(
         maxiter=max_iterations,
         jit=True,
     )
-    
+
     return optimal_posterior

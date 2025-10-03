@@ -2,6 +2,7 @@ from typing import Callable, Tuple, NamedTuple
 from functools import partial
 
 import jax
+from jax import Array
 from jax import numpy as jnp
 from jax import scipy as jsc
 
@@ -31,7 +32,7 @@ def kl_between_marginals(p, q):
 
 @partial(jax.jit, static_argnums=(1, 2, 3))
 def statistical_expansion(
-    observations: jnp.ndarray,
+    observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
     log_observation_fn: Callable,

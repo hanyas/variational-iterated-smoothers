@@ -1,5 +1,6 @@
 from typing import Tuple, Union, Callable
 
+from jax import Array
 import jax.numpy as jnp
 
 from varsmooth.objects import Gaussian
@@ -34,8 +35,8 @@ def linearize(
 
 
 def get_sigma_points(
-    m: jnp.ndarray,
-    chol_P: jnp.ndarray
+    m: Array,
+    chol_P: Array
 ) -> SigmaPoints:
 
     nb_dim = m.shape[0]
@@ -46,7 +47,7 @@ def get_sigma_points(
 
 def _cubature_weights(
     nb_dim: int,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> Tuple[Array, Array, Array]:
 
     I_dim = jnp.eye(nb_dim)
     wm = jnp.ones(shape=(2 * nb_dim,)) / (2 * nb_dim)

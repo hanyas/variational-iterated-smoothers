@@ -1,6 +1,7 @@
 from typing import Tuple, Optional, Union, Callable
 
 import jax.numpy as jnp
+from jax import Array
 
 from varsmooth.objects import Gaussian
 from varsmooth.objects import AdditiveGaussianModel
@@ -45,8 +46,8 @@ def linearize(
 
 
 def get_sigma_points(
-    m: jnp.ndarray,
-    chol_P: jnp.ndarray,
+    m: Array,
+    chol_P: Array,
     alpha: float,
     beta: float,
     kappa: Optional[float]
@@ -66,7 +67,7 @@ def _unscented_weights(
     alpha: float,
     beta: float,
     kappa: Optional[float]
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> Tuple[Array, Array, Array]:
 
     lamda = alpha**2 * (nb_dim + kappa) - nb_dim
     wm = jnp.full(2 * nb_dim + 1, 1 / (2 * (nb_dim + lamda)))

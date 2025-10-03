@@ -9,6 +9,7 @@ import scipy as sc
 from numpy.polynomial.hermite import hermgauss
 
 import jax
+from jax import Array
 import jax.numpy as jnp
 
 from varsmooth.objects import Gaussian
@@ -51,8 +52,8 @@ def linearize(
 
 @partial(jax.jit, static_argnums=(2,))
 def get_sigma_points(
-    m: jnp.ndarray,
-    chol_P: jnp.ndarray,
+    m: Array,
+    chol_P: Array,
     order: int
 ) -> SigmaPoints:
 
@@ -99,7 +100,7 @@ def _gauss_hermite_weights(nb_dim=1, order=20):
 # def _gauss_hermite_weights(
 #     nb_dim: int,
 #     order: int = 3
-# ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+# ) -> Tuple[Array, Array, Array]:
 #
 #     n = nb_dim
 #     p = order

@@ -65,7 +65,7 @@ def test_log_observation_additive(dim_y, dim_x, seed, method):
     )
 
     y = np.random.randn(dim_y)
-    logpdf = lambda x: h.logpdf(y, x)
+    logpdf = lambda x: h.log_prob(y, x)
 
     m_x = np.random.randn(dim_x)
     chol_x = np.random.rand(dim_x, dim_x)
@@ -103,7 +103,7 @@ def test_log_transition_additive(dim_x, seed, method):
     chol_x[np.triu_indices(int(2 * dim_x), 1)] = 0
     q = Gaussian(m_x, chol_x @ chol_x.T)
 
-    logpdf = lambda x: f.logpdf(x[:dim_x], x[dim_x:])
+    logpdf = lambda x: f.log_prob(x[:dim_x], x[dim_x:])
     C_approx, c_approx, kappa_approx = method(logpdf, q)
 
     C11_approx = C_approx[:dim_x, :dim_x]

@@ -2,6 +2,7 @@ from typing import Callable
 from functools import partial
 
 import jax
+from jax import Array
 from jax import numpy as jnp
 from jax import scipy as jsc
 
@@ -55,7 +56,7 @@ def get_log_transition(
 
 @partial(jax.vmap, in_axes=(0, None, 0, None))
 def get_log_observation(
-    y: jnp.ndarray,
+    y: Array,
     h: AdditiveGaussianModel,
     q: Gaussian,
     method: Callable

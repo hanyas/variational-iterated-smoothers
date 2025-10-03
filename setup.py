@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(
-    name="variational_smoothers",
+    name="varsmooth",
     version="0.1.0",
     description="Variational Iterated Gaussian Smoothing",
     author="Hany Abdulsamad",
@@ -15,6 +15,6 @@ setup(
         "typing_extensions",
         "matplotlib",
     ],
-    packages=["variational_smoothers"],
+    packages=["varsmooth"],
     zip_safe=False,
 )

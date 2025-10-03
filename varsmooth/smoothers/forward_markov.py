@@ -2,6 +2,7 @@ from typing import Callable, Tuple
 from functools import partial
 
 import jax
+from jax import Array
 from jax import numpy as jnp
 from jax import scipy as jsc
 
@@ -210,7 +211,7 @@ def forward_std_message(posterior: GaussMarkov) -> Gaussian:
 
 
 def forward_markov_smoother(
-    observations: jnp.ndarray,
+    observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
     log_observation_fn: Callable,
@@ -295,16 +296,16 @@ def vanilla_objective(
 
 
 @partial(jax.jit, static_argnames=[
-    'log_prior_fn', 
-    'log_transition_fn', 
+    'log_prior_fn',
+    'log_transition_fn',
     'log_observation_fn',
     'kl_constraint',
-    'init_temperature', 
-    'min_temperature', 
+    'init_temperature',
+    'min_temperature',
     'max_iterations'
 ])
 def iterated_forward_markov_smoother(
-    observations: jnp.ndarray,
+    observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
     log_observation_fn: Callable,
@@ -482,13 +483,13 @@ def iterated_forward_markov_smoother(
 
 
 @partial(jax.jit, static_argnames=[
-    'log_prior_fn', 
-    'log_transition_fn', 
+    'log_prior_fn',
+    'log_transition_fn',
     'log_observation_fn',
     'max_iterations'
 ])
 def undamped_iterated_forward_markov_smoother(
-    observations: jnp.ndarray,
+    observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
     log_observation_fn: Callable,

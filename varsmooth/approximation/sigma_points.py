@@ -1,6 +1,7 @@
 from typing import NamedTuple
 
 import jax
+from jax import Array
 import jax.numpy as jnp
 import jax.scipy as jsc
 
@@ -21,10 +22,10 @@ def get_cov(wc, x_pts, x_mean, y_pts, y_mean):
 
 
 class SigmaPoints(NamedTuple):
-    points: jnp.ndarray
-    wm: jnp.ndarray
-    wc: jnp.ndarray
-    xi: jnp.ndarray
+    points: Array
+    wm: Array
+    wc: Array
+    xi: Array
 
 
 def linearize_additive(fun, noise, q, get_sigma_points):

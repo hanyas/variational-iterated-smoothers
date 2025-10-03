@@ -1,5 +1,6 @@
 from typing import NamedTuple, Callable
 
+from jax import Array, random
 import jax.numpy as jnp
 import jax.scipy as jsc
 
@@ -7,22 +8,30 @@ from varsmooth.utils import logdet
 
 
 class Gaussian(NamedTuple):
-    mean: jnp.ndarray
-    cov: jnp.ndarray
+    mean: Array
+    cov: Array
 
-    def logpdf(self, x):
+    def sample(self, key: Array) -> Array:
+        return random.multivariate_normal(key, self.mean, self.cov)
+
+    def log_prob(self, x: Array) -> Array:
         diff = x - self.mean
         return (
             - 0.5 * diff.T @ jsc.linalg.solve(self.cov, diff)
             - 0.5 * logdet(2 * jnp.pi * self.cov)
         )
 
+    def sample_and_log_prob(self, key: Array) -> tuple[Array, Array]:
+        sample = self.sample(key)
+        log_prob = self.log_prob(sample)
+        return sample, log_prob
+
 
 class AdditiveGaussianModel(NamedTuple):
     fun: Callable
     noise: Gaussian
 
-    def logpdf(self, y, x):
+    def log_prob(self, y, x):
         diff = y - self.fun(x)
         return (
             - 0.5 * diff.T @ jsc.linalg.solve(self.noise.cov, diff)
@@ -36,16 +45,24 @@ class ConditionalMomentsModel(NamedTuple):
 
 
 class AffineGaussian(NamedTuple):
-    F: jnp.ndarray
-    d: jnp.ndarray
-    Sigma: jnp.ndarray
+    F: Array
+    d: Array
+    Sigma: Array
 
-    def logpdf(self, y, x):
+    def sample(self, key: Array, x: Array) -> Array:
+        return random.multivariate_normal(key, self.F @ x + self.d, self.Sigma)
+
+    def log_prob(self, y: Array, x: Array) -> Array:
         diff = y - self.F @ x - self.d
         return (
             - 0.5 * diff.T @ jsc.linalg.solve(self.Sigma, diff)
             - 0.5 * logdet(2.0 * jnp.pi * self.Sigma)
         )
+
+    def sample_and_log_prob(self, key: Array, x: Array) -> tuple[Array, Array]:
+        sample = self.sample(key, x)
+        log_prob = self.log_prob(sample, x)
+        return sample, log_prob
 
 
 class GaussMarkov(NamedTuple):
@@ -54,40 +71,46 @@ class GaussMarkov(NamedTuple):
 
 
 class LogConditionalNorm(NamedTuple):
-    S: jnp.ndarray
-    s: jnp.ndarray
-    xi: jnp.ndarray
+    S: Array
+    s: Array
+    xi: Array
+
+    def predict(self, x: Array) -> Array:
+        return -0.5 * jnp.dot(x, jnp.dot(self.S, x)) + self.s @ x + self.xi
 
 
 class LogMarginalNorm(NamedTuple):
-    U: jnp.ndarray
-    u: jnp.ndarray
-    eta: jnp.ndarray
+    U: Array
+    u: Array
+    eta: Array
+
+    def predict(self, x: Array) -> Array:
+        return -0.5 * jnp.dot(x, jnp.dot(self.U, x)) + self.u @ x + self.eta
 
 
 class Potential(NamedTuple):
-    R: jnp.ndarray
-    r: jnp.ndarray
-    rho: jnp.ndarray
+    R: Array
+    r: Array
+    rho: Array
 
 
 class LogPrior(NamedTuple):
-    L: jnp.ndarray
-    l: jnp.ndarray
-    nu: jnp.ndarray
+    L: Array
+    l: Array
+    nu: Array
 
 
 class LogTransition(NamedTuple):
-    C11: jnp.ndarray
-    C12: jnp.ndarray
-    C21: jnp.ndarray
-    C22: jnp.ndarray
-    c1: jnp.ndarray
-    c2: jnp.ndarray
-    kappa: jnp.ndarray
+    C11: Array
+    C12: Array
+    C21: Array
+    C22: Array
+    c1: Array
+    c2: Array
+    kappa: Array
 
 
 class LogObservation(NamedTuple):
-    L: jnp.ndarray
-    l: jnp.ndarray
-    nu: jnp.ndarray
+    L: Array
+    l: Array
+    nu: Array

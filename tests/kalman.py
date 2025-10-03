@@ -1,4 +1,6 @@
 import jax
+
+from jax import Array
 from jax import numpy as jnp
 from jax import scipy as jsc
 
@@ -7,7 +9,7 @@ from varsmooth.utils import none_or_concat, none_or_shift
 
 
 def filtering(
-    observations: jnp.ndarray,
+    observations: Array,
     prior_dist: Gaussian,
     linear_transition: AffineGaussian,
     linear_observation: AffineGaussian,
@@ -80,7 +82,7 @@ def smoothing(
 
 
 def rts_smoother(
-    observations: jnp.ndarray,
+    observations: Array,
     prior_dist: Gaussian,
     linear_transition: AffineGaussian,
     linear_observation: AffineGaussian,

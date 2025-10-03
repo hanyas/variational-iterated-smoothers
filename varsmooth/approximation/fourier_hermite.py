@@ -2,6 +2,7 @@ from typing import Callable
 from functools import partial
 
 import jax
+from jax import Array
 from jax import numpy as jnp
 
 from varsmooth.objects import (
@@ -19,7 +20,7 @@ def get_log_prior(
     q: Gaussian,
     method: Callable,
 ):
-    L, l, nu = method(prior_dist.logpdf, q)
+    L, l, nu = method(prior_dist.log_prob, q)
     return LogPrior(L, l, nu)
 
 
@@ -44,7 +45,7 @@ def get_log_transition(
         ))
     )
 
-    logpdf = lambda z: f.logpdf(z[:dim], z[dim:])
+    logpdf = lambda z: f.log_prob(z[:dim], z[dim:])
     C, c, kappa = method(logpdf, q)
     return LogTransition(
         C11=C[:dim, :dim],
@@ -59,12 +60,12 @@ def get_log_transition(
 
 @partial(jax.vmap, in_axes=(0, None, 0, None))
 def get_log_observation(
-    y: jnp.ndarray,
+    y: Array,
     h: AdditiveGaussianModel,
     q: Gaussian,
     method: Callable
 ) -> LogObservation:
 
-    logpdf = lambda x: h.logpdf(y, x)
+    logpdf = lambda x: h.log_prob(y, x)
     L, l, nu = method(logpdf, q)
     return LogObservation(L, l, nu)
