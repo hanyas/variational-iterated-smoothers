@@ -232,14 +232,15 @@ def forward_markov_smoother(
         )
 
     damping = temperature / (1.0 + temperature)
-    posterior, _, _, _, _ = backward_log_message(
+    posterior, log_marginal, _, log_condtionals, _ = backward_log_message(
         log_prior,
         log_transition,
         log_observation,
         reference_posterior,
         damping,
     )
-    return posterior
+    return posterior, log_condtionals
+    # return posterior
 
 
 def dual_objective(

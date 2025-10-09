@@ -344,6 +344,74 @@ def increase_param(param) -> ParamStruct:
     )
 
 
+def sample_from_forward_markov(
+    rng_key: Array,
+    gauss_markov: GaussMarkov,
+    num_samples: int
+) -> Array:
+    """Sample trajectories from forward Markov smoother conditional posteriors.
+
+    The forward Markov smoother result contains conditional posteriors p(x_t | x_{t-1})
+    which we can use to sample complete trajectories efficiently using scan.
+
+    Args:
+        rng_key: JAX random key
+        gauss_markov: GaussMarkov object from forward_markov_smoother
+        num_samples: Number of trajectory samples to generate
+
+    Returns:
+        Sampled trajectories of shape (num_samples, num_steps, state_dim)
+    """
+
+    # Extract components
+    marginal = gauss_markov.marginal  # Gaussian
+    kernels = gauss_markov.kernels  # AffineGaussian
+
+    num_time_steps, state_dim, _ = kernels.F.shape
+
+    def sample_single_trajectory(sample_key: Array) -> Array:
+        """Sample a single trajectory using scan."""
+
+        def sample_step(carry, args):
+            key, prev_state = carry
+            F_t, d_t, Sigma_t = args
+
+            # Sample next state: x_t | x_{t-1} ~ N(F_t @ x_{t-1} + d_t, Sigma_t)
+            sample_key, next_key = jax.random.split(key)
+            conditional_mean = F_t @ prev_state + d_t
+            next_state = jax.random.multivariate_normal(
+                sample_key, conditional_mean, Sigma_t
+            )
+
+            return (next_key, next_state), next_state
+
+        # Sample initial state
+        init_key, traj_key = jax.random.split(sample_key)
+        initial_state = jax.random.multivariate_normal(
+            init_key, marginal.mean, marginal.cov
+        )
+
+        # Sample trajectory using conditional posteriors
+        _, trajectory = jax.lax.scan(
+            sample_step,
+            (traj_key, initial_state),
+            (kernels.F, kernels.d, kernels.Sigma)
+        )
+
+        # Prepend initial state to trajectory
+        def concat_trees(x, y):
+            return jax.tree.map(lambda x, y: jnp.concatenate([x[None, ...], y]), x, y)
+
+        trajectory = concat_trees(initial_state, trajectory)
+        return trajectory
+
+    # Generate multiple trajectories
+    sample_keys = jax.random.split(rng_key, num_samples)
+    trajectories = jax.vmap(sample_single_trajectory)(sample_keys)
+
+    return trajectories
+
+
 # def line_search(
 #     param: float,
 #     fun: Callable,

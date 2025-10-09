@@ -69,7 +69,7 @@ def smoothing(
         qs = _smooth(F, b, Omega, qf, qs)
         return qs, qs
 
-    last_marginal = jax.tree_map(lambda z: z[-1], filter_trajectory)
+    last_marginal = jax.tree.map(lambda z: z[-1], filter_trajectory)
     rest_marginals = none_or_shift(filter_trajectory, -1)
 
     _, smoothed_marginals = jax.lax.scan(
