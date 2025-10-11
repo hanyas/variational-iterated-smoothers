@@ -13,12 +13,12 @@ from varsmooth.objects import (
 )
 from varsmooth.smoothers.utils import (
     statistical_expansion,
-    merge_messages,
     log_to_std_form,
     std_to_log_form,
-    line_search,
+    merge_messages,
     kl_between_reverse_gauss_markovs,
-    kl_between_forward_gauss_markovs
+    kl_between_forward_gauss_markovs,
+    line_search,
 )
 from varsmooth.utils import (
     none_or_concat,
@@ -115,15 +115,15 @@ def update_marginals(
     log_last_boundary = std_to_log_form(last_boundary)
 
     # update all but last marginal
-    potentials = ValueFn(
+    value_fns = ValueFn(
         R=(1.0 - damping) * log_messages.R + damping * log_marginals.R[1:-1],
         r=(1.0 - damping) * log_messages.r + damping * log_marginals.r[1:-1],
         rho=(1.0 - damping) * log_messages.rho + damping * log_marginals.rho[1:-1]
     )
 
     # append first marginal
-    potentials = none_or_concat(
-        potentials,
+    value_fns = none_or_concat(
+        value_fns,
         ValueFn(
             R=log_first_boundary.R,
             r=log_first_boundary.r,
@@ -132,8 +132,8 @@ def update_marginals(
     )
 
     # append last marginal
-    potentials = none_or_concat(
-        potentials,
+    value_fns = none_or_concat(
+        value_fns,
         ValueFn(
             R=log_last_boundary.R,
             r=log_last_boundary.r,
@@ -142,7 +142,7 @@ def update_marginals(
         position=-1
     )
 
-    return jax.vmap(log_to_std_form)(potentials)
+    return jax.vmap(log_to_std_form)(value_fns)
 
 
 @partial(jax.jit, static_argnames=[
