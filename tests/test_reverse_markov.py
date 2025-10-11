@@ -9,7 +9,7 @@ from varsmooth.objects import GaussMarkov
 from varsmooth.objects import AdditiveGaussianModel
 
 from varsmooth.smoothers.reverse_markov import reverse_markov_smoother
-from varsmooth.smoothers.reverse_markov import backward_std_message
+from varsmooth.smoothers.reverse_markov import std_backward_message
 
 from tests.lgssm import simulate
 from tests.test_utils import generate_system
@@ -91,7 +91,7 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
         init_posterior,
         0.0
     )
-    var_marginals = backward_std_message(reverse_markov)
+    var_marginals = std_backward_message(reverse_markov)
 
     np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
     np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)
@@ -164,7 +164,7 @@ def test_fh_fwd_smoother(dim_x, dim_y, seed):
         init_posterior,
         0.0
     )
-    var_marginals = backward_std_message(reverse_markov)
+    var_marginals = std_backward_message(reverse_markov)
 
     np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
     np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)

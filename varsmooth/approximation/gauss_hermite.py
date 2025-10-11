@@ -1,10 +1,7 @@
 from functools import partial
-from typing import Tuple, List, Union, Callable
+from typing import Union, Callable
 
 import itertools
-
-import numpy as np
-import scipy as sc
 
 from numpy.polynomial.hermite import hermgauss
 

@@ -70,7 +70,7 @@ class GaussMarkov(NamedTuple):
     kernels: AffineGaussian
 
 
-class LogConditionalNorm(NamedTuple):
+class LogMessage(NamedTuple):
     S: Array
     s: Array
     xi: Array
@@ -88,7 +88,7 @@ class LogMarginalNorm(NamedTuple):
         return -0.5 * jnp.dot(x, jnp.dot(self.U, x)) + self.u @ x + self.eta
 
 
-class Potential(NamedTuple):
+class ValueFn(NamedTuple):
     R: Array
     r: Array
     rho: Array

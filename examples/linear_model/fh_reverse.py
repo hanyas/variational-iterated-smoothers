@@ -8,8 +8,8 @@ from varsmooth.objects import AdditiveGaussianModel
 
 from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
 from varsmooth.smoothers.reverse_markov import reverse_markov_smoother
-from varsmooth.smoothers.reverse_markov import backward_std_message
-from varsmooth.smoothers.forward_markov import forward_std_message
+from varsmooth.smoothers.reverse_markov import std_backward_message
+from varsmooth.smoothers.forward_markov import std_forward_message
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
 
 from varsmooth.approximation import gauss_hermite_quadratization as quadratize
@@ -74,7 +74,7 @@ forward_markov = GaussMarkov(
         np.repeat([Sigma], nb_steps, axis=0),
     )
 )
-forward_marginals = forward_std_message(forward_markov)
+forward_marginals = std_forward_message(forward_markov)
 
 init_posterior = initialize_reverse_with_forward(forward_markov)
 
@@ -91,7 +91,7 @@ reverse_markov = reverse_markov_smoother(
     init_posterior,
     0.0
 )
-var_marginals = backward_std_message(reverse_markov)
+var_marginals = std_backward_message(reverse_markov)
 
 np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
 np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)
@@ -123,7 +123,7 @@ reverse_markov = iterated_reverse_markov_smoother(
     kl_constraint=100,
     init_temperature=1e6,
 )
-var_marginals = backward_std_message(reverse_markov)
+var_marginals = std_backward_message(reverse_markov)
 
 np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
 np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)

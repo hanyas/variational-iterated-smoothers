@@ -15,8 +15,8 @@ from varsmooth.objects import (
     LogPrior,
     LogTransition,
     LogObservation,
-    Potential,
-    LogConditionalNorm
+    ValueFn,
+    LogMessage
 )
 from varsmooth.utils import none_or_idx, none_or_shift, logdet
 
@@ -53,9 +53,9 @@ def statistical_expansion(
 def initialize_reverse_with_forward(
     forward_markov: GaussMarkov
 ):
-    from varsmooth.smoothers.forward_markov import forward_std_message
+    from varsmooth.smoothers.forward_markov import std_forward_message
 
-    forward_marginals = forward_std_message(forward_markov)
+    forward_marginals = std_forward_message(forward_markov)
 
     Fs = jnp.zeros_like(forward_markov.kernels.F)
     ds = jnp.zeros_like(forward_markov.kernels.d)
@@ -145,10 +145,10 @@ def get_reverse_kernel(
 
 
 def merge_messages(
-    fwd_message: Potential,
-    bwd_message: LogConditionalNorm,
-) -> Potential:
-    return Potential(
+    fwd_message: ValueFn,
+    bwd_message: LogMessage,
+) -> ValueFn:
+    return ValueFn(
         R=(fwd_message.R + bwd_message.S),
         r=(fwd_message.r + bwd_message.s),
         rho=(fwd_message.rho + bwd_message.xi),
@@ -156,7 +156,7 @@ def merge_messages(
 
 
 def log_to_std_form(
-    potential: Potential
+    potential: ValueFn
 ) -> Gaussian:
     return Gaussian(
         mean=jsc.linalg.inv(potential.R) @ potential.r,
@@ -166,8 +166,8 @@ def log_to_std_form(
 
 def std_to_log_form(
     dist: Gaussian
-) -> Potential:
-    return Potential(
+) -> ValueFn:
+    return ValueFn(
         R=jsc.linalg.inv(dist.cov),
         r=jsc.linalg.solve(dist.cov, dist.mean),
         rho=(

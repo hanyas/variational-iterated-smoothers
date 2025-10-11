@@ -13,9 +13,9 @@ from varsmooth.objects import (
     LogPrior,
     LogTransition,
     LogObservation,
-    Potential,
     LogMarginalNorm,
-    LogConditionalNorm
+    LogMessage,
+    ValueFn,
 )
 from varsmooth.smoothers.utils import statistical_expansion, line_search
 from varsmooth.smoothers.utils import kl_between_reverse_gauss_markovs
@@ -23,23 +23,23 @@ from varsmooth.smoothers.utils import kl_between_reverse_gauss_markovs
 from varsmooth.utils import (
     none_or_concat,
     symmetrize,
+    logdet,
     eig,
-    logdet
 )
 
 from jaxopt._src.loop import while_loop as while_with_maxiter
 
 
 # @jax.jit
-def forward_log_message(
+def log_forward_message(
     log_prior: LogPrior,
     log_transition: LogTransition,
     log_observation: LogObservation,
     nominal_posterior: GaussMarkov,
     damping: float,
-) -> Tuple[GaussMarkov, LogMarginalNorm, Potential, LogConditionalNorm, bool]:
+) -> Tuple[GaussMarkov, LogMarginalNorm, ValueFn, LogMessage, bool]:
 
-    def _forward(carry, args):
+    def _forward_step(carry, args):
         R, r, rho = carry
         C11, C12, C21, C22, c1, c2, kappa, \
             L, l, nu, \
@@ -76,11 +76,11 @@ def forward_log_message(
             r = l + 1.0 / (1.0 - damping) * s
             rho = nu + 1.0 / (1.0 - damping) * xi
 
-            potential = Potential(R, r, rho)
-            return potential, (
-                potential,
+            value_fn = ValueFn(R, r, rho)
+            return value_fn, (
+                value_fn,
                 AffineGaussian(F, d, Sigma),
-                LogConditionalNorm(S, s, xi),
+                LogMessage(S, s, xi),
                 True  # feasible
             )
 
@@ -93,11 +93,11 @@ def forward_log_message(
             r = jnp.zeros_like(l)
             rho = jnp.zeros_like(nu)
 
-            potential = Potential(R, r, rho)
-            return potential, (
-                potential,
+            value_fn = ValueFn(R, r, rho)
+            return value_fn, (
+                value_fn,
                 AffineGaussian(F, d, Sigma),
-                LogConditionalNorm(S, s, xi),
+                LogMessage(S, s, xi),
                 False   # Not feasible
             )
 
@@ -107,7 +107,7 @@ def forward_log_message(
             false_fun=_not_feasible_forward_pass,
         )
 
-    first_potential = Potential(
+    first_value_fn = ValueFn(
         R=log_prior.L,
         r=log_prior.l,
         rho=log_prior.nu
@@ -115,14 +115,14 @@ def forward_log_message(
 
     nominal_marginal, nominal_kernels = nominal_posterior
 
-    last_potential, (potentials, kernels, log_cond_norms, feasible_pass) = jax.lax.scan(
-        f=_forward,
-        init=first_potential,
+    last_value_fn, (value_fns, kernels, log_fwd_msgs, feasible_pass) = jax.lax.scan(
+        f=_forward_step,
+        init=first_value_fn,
         xs=(*log_transition, *log_observation, *nominal_kernels),
     )
-    potentials = none_or_concat(potentials, first_potential, 1)
+    value_fns = none_or_concat(value_fns, first_value_fn, 1)
 
-    R, r, rho = last_potential
+    R, r, rho = last_value_fn
 
     m, P = nominal_marginal
     inv_P = jsc.linalg.inv(P)
@@ -173,17 +173,17 @@ def forward_log_message(
     return (
         GaussMarkov(marginal, kernels),
         log_marg_norm,
-        potentials,
-        log_cond_norms,
+        value_fns,
+        log_fwd_msgs,
         feasible_pass
     )
 
 
 # @jax.jit
-def backward_std_message(posterior: GaussMarkov) -> Gaussian:
+def std_backward_message(posterior: GaussMarkov) -> Gaussian:
     last_marginal, kernels = posterior
 
-    def _backward(carry, args):
+    def _backward_step(carry, args):
         q = carry
         kernel = args
 
@@ -196,7 +196,7 @@ def backward_std_message(posterior: GaussMarkov) -> Gaussian:
         )
         return qn, qn
 
-    _, marginals = jax.lax.scan(_backward, last_marginal, kernels, reverse=True)
+    _, marginals = jax.lax.scan(_backward_step, last_marginal, kernels, reverse=True)
     return none_or_concat(marginals, last_marginal, position=-1)
 
 
@@ -209,7 +209,7 @@ def reverse_markov_smoother(
     temperature: float
 ) -> GaussMarkov:
 
-    marginals = backward_std_message(reference_posterior)
+    marginals = std_backward_message(reference_posterior)
 
     log_prior, log_transition, log_observation = \
         statistical_expansion(
@@ -222,14 +222,14 @@ def reverse_markov_smoother(
         )
 
     damping = temperature / (1.0 + temperature)
-    posterior, log_marginal, _, log_conditionals, _ = forward_log_message(
+    posterior, _, _, _, _ = log_forward_message(
         log_prior,
         log_transition,
         log_observation,
         reference_posterior,
         damping,
     )
-    return posterior, log_marginal, log_conditionals
+    return posterior
 
 
 def dual_objective(
@@ -240,7 +240,7 @@ def dual_objective(
     kl_constraint: float,
     damping: float,
 ):
-    posterior, lognorm, _, _, feasible = forward_log_message(
+    posterior, log_norm, _, _, feasible = log_forward_message(
         log_prior,
         log_transition,
         log_observation,
@@ -249,7 +249,7 @@ def dual_objective(
     )
 
     def _feasible_objective():
-        U, u, eta = lognorm
+        U, u, eta = log_norm
         m, _ = reference_posterior.marginal
 
         dual_value = damping * kl_constraint
@@ -272,7 +272,7 @@ def vanilla_objective(
     log_observation: LogObservation,
     reference_posterior: GaussMarkov,
 ):
-    _, lognorm, _, _, _ = forward_log_message(
+    _, log_norm, _, _, _ = log_forward_message(
         log_prior,
         log_transition,
         log_observation,
@@ -280,7 +280,7 @@ def vanilla_objective(
         0.0,
     )
 
-    U, u, eta = lognorm
+    U, u, eta = log_norm
     m, _ = reference_posterior.marginal
     return - 0.5 * m.T @ U @ m + m.T @ u + eta
 
@@ -330,7 +330,7 @@ def iterated_reverse_markov_smoother(
 
     def single_iteration(reference, iteration_idx):
         # Step 1: Compute marginals and statistical expansion
-        marginals = backward_std_message(reference)
+        marginals = std_backward_message(reference)
         log_prior, log_transition, log_observation = statistical_expansion(
             observations,
             log_prior_fn,
@@ -357,7 +357,7 @@ def iterated_reverse_markov_smoother(
         def dual_gradient_fn(temperature):
             """Gradient of dual objective with respect to temperature."""
             damping = temperature / (1.0 + temperature)
-            posterior, _, _, _, feasible_pass = forward_log_message(
+            posterior, _, _, _, feasible_pass = log_forward_message(
                 log_prior,
                 log_transition,
                 log_observation,
@@ -368,7 +368,7 @@ def iterated_reverse_markov_smoother(
             def compute_gradient():
                 """Compute gradient when forward pass is feasible."""
                 kl_div = kl_between_reverse_gauss_markovs(
-                    marginals=backward_std_message(posterior),
+                    marginals=std_backward_message(posterior),
                     gauss_markov=posterior,
                     ref_gauss_markov=reference
                 )
@@ -397,7 +397,7 @@ def iterated_reverse_markov_smoother(
         def apply_optimal_solution():
             """Apply the optimal temperature to compute final posterior."""
             damping = temperature / (1.0 + temperature)
-            posterior, _, _, _, _ = forward_log_message(
+            posterior, _, _, _, _ = log_forward_message(
                 log_prior,
                 log_transition,
                 log_observation,
@@ -407,7 +407,7 @@ def iterated_reverse_markov_smoother(
 
             # Compute KL divergence for logging
             kl_div = kl_between_reverse_gauss_markovs(
-                marginals=backward_std_message(posterior),
+                marginals=std_backward_message(posterior),
                 gauss_markov=posterior,
                 ref_gauss_markov=reference
             )

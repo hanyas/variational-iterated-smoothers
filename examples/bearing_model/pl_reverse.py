@@ -8,8 +8,8 @@ from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import GaussMarkov
 
 from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
-from varsmooth.smoothers.reverse_markov import backward_std_message
-from varsmooth.smoothers.forward_markov import forward_std_message
+from varsmooth.smoothers.reverse_markov import std_backward_message
+from varsmooth.smoothers.forward_markov import std_forward_message
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
 
 from varsmooth.approximation import gauss_hermite_linearization as linearize
@@ -67,7 +67,7 @@ forward_markov = GaussMarkov(
         Sigma=np.repeat([Sigma], nb_steps, axis=0),
     )
 )
-forward_marginals = forward_std_message(forward_markov)
+forward_marginals = std_forward_message(forward_markov)
 
 init_posterior = initialize_reverse_with_forward(forward_markov)
 
@@ -85,7 +85,7 @@ reverse_markov = iterated_reverse_markov_smoother(
     init_temperature=1e6,
     max_iter=50
 )
-marginals = backward_std_message(reverse_markov)
+marginals = std_backward_message(reverse_markov)
 
 plt.figure(figsize=(7, 7))
 plt.plot(

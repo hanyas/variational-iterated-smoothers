@@ -10,7 +10,7 @@ from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
 from varsmooth.smoothers.forward_markov import undamped_iterated_forward_markov_smoother
 
-from varsmooth.smoothers.forward_markov import forward_std_message
+from varsmooth.smoothers.forward_markov import std_forward_message
 
 from varsmooth.approximation import gauss_hermite_linearization as linearize
 from varsmooth.approximation.posterior_linearization import get_log_prior
@@ -82,7 +82,7 @@ forward_markov = iterated_forward_markov_smoother(
     init_temperature=1e6,
     max_iter=50
 )
-marginals = forward_std_message(forward_markov)
+marginals = std_forward_message(forward_markov)
 
 plt.figure(figsize=(7, 7))
 plt.plot(

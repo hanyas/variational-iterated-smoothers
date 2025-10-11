@@ -8,7 +8,7 @@ from varsmooth.objects import AdditiveGaussianModel
 
 from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
 from varsmooth.smoothers.forward_markov import forward_markov_smoother
-from varsmooth.smoothers.forward_markov import forward_std_message
+from varsmooth.smoothers.forward_markov import std_forward_message
 
 from varsmooth.approximation import gauss_hermite_linearization as linearize
 from varsmooth.approximation.posterior_linearization import get_log_prior
@@ -86,7 +86,7 @@ forward_markov = forward_markov_smoother(
     init_posterior,
     0.0
 )
-var_marginals = forward_std_message(forward_markov)
+var_marginals = std_forward_message(forward_markov)
 
 np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
 np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)
@@ -118,7 +118,7 @@ forward_markov = iterated_forward_markov_smoother(
     kl_constraint=100,
     init_temperature=1e6,
 )
-var_marginals = forward_std_message(forward_markov)
+var_marginals = std_forward_message(forward_markov)
 
 np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
 np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)
