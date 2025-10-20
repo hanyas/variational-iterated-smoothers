@@ -27,23 +27,6 @@ class Gaussian(NamedTuple):
         return sample, log_prob
 
 
-class AdditiveGaussianModel(NamedTuple):
-    fun: Callable
-    noise: Gaussian
-
-    def log_prob(self, y, x):
-        diff = y - self.fun(x)
-        return (
-            - 0.5 * diff.T @ jsc.linalg.solve(self.noise.cov, diff)
-            - 0.5 * logdet(2 * jnp.pi * self.noise.cov)
-        )
-
-
-class ConditionalMomentsModel(NamedTuple):
-    mean_fn: Callable
-    cov_fn: Callable
-
-
 class AffineGaussian(NamedTuple):
     F: Array
     d: Array
@@ -70,6 +53,23 @@ class GaussMarkov(NamedTuple):
     kernels: AffineGaussian
 
 
+class AdditiveGaussianModel(NamedTuple):
+    fun: Callable
+    noise: Gaussian
+
+    def log_prob(self, y, x):
+        diff = y - self.fun(x)
+        return (
+            - 0.5 * diff.T @ jsc.linalg.solve(self.noise.cov, diff)
+            - 0.5 * logdet(2 * jnp.pi * self.noise.cov)
+        )
+
+
+class ConditionalMomentsModel(NamedTuple):
+    mean_fn: Callable
+    cov_fn: Callable
+
+
 class LogMessage(NamedTuple):
     S: Array
     s: Array
@@ -93,6 +93,9 @@ class ValueFn(NamedTuple):
     r: Array
     rho: Array
 
+    def predict(self, x: Array) -> Array:
+        return -0.5 * jnp.dot(x, jnp.dot(self.R, x)) + self.r @ x + self.rho
+
 
 class LogPrior(NamedTuple):
     L: Array
@@ -114,3 +117,7 @@ class LogObservation(NamedTuple):
     L: Array
     l: Array
     nu: Array
+
+    def predict(self, x: Array) -> Array:
+        return -0.5 * jnp.dot(x, jnp.dot(self.L, x)) + self.l @ x + self.nu
+
