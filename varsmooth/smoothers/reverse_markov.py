@@ -5,25 +5,19 @@ from jax import numpy as jnp
 from jax import scipy as jsc
 
 from varsmooth.objects import (
-    Gaussian,
     AffineGaussian,
+    Gaussian,
     GaussMarkov,
-    LogPrior,
-    LogTransition,
-    LogObservation,
     LogMarginalNorm,
     LogMessage,
+    LogObservation,
+    LogPrior,
+    LogTransition,
     ValueFn,
 )
-from varsmooth.smoothers._core import make_smoother_suite
-from varsmooth.smoothers.utils import kl_between_reverse_gauss_markovs
-from varsmooth.smoothers.utils import std_backward_message  # re-exported for back-compat
-
-from varsmooth.utils import (
-    none_or_concat,
-    symmetrize,
-    logdet,
-)
+from varsmooth.smoothers.core import make_smoother_suite
+from varsmooth.smoothers.utils import kl_between_reverse_gauss_markovs, std_backward_message
+from varsmooth.utils import logdet, none_or_concat, symmetrize
 
 
 def log_forward_message(
@@ -36,9 +30,7 @@ def log_forward_message(
 
     def _forward_step(carry, args):
         R, r, rho = carry
-        C11, C12, C21, C22, c1, c2, kappa, \
-            L, l, nu, \
-            F, d, Sigma = args
+        C11, C12, C21, C22, c1, c2, kappa, L, l, nu, F, d, Sigma = args
 
         G11 = (1.0 - damping) * C11 + damping * F.T @ jsc.linalg.solve(Sigma, F)
         G22 = (1.0 - damping) * (C22 + R) + damping * jsc.linalg.inv(Sigma)
@@ -64,11 +56,7 @@ def log_forward_message(
 
             S = G11 - G21.T @ iG22_G21
             s = g1 + G21.T @ iG22_g2
-            xi = (
-                theta
-                + 0.5 * (dim * jnp.log(2 * jnp.pi) - logdet_G22)
-                + 0.5 * g2.T @ iG22_g2
-            )
+            xi = theta + 0.5 * (dim * jnp.log(2 * jnp.pi) - logdet_G22) + 0.5 * g2.T @ iG22_g2
 
             F = iG22_G21
             d = iG22_g2
@@ -78,12 +66,7 @@ def log_forward_message(
             rho = nu + 1.0 / (1.0 - damping) * xi
 
             value_fn = ValueFn(R, r, rho)
-            return value_fn, (
-                value_fn,
-                AffineGaussian(F, d, Sigma),
-                LogMessage(S, s, xi),
-                True  # feasible
-            )
+            return value_fn, (value_fn, AffineGaussian(F, d, Sigma), LogMessage(S, s, xi), True)  # feasible
 
         def _not_feasible_forward_pass():
             S = jnp.zeros_like(G11)
@@ -95,12 +78,7 @@ def log_forward_message(
             rho = jnp.zeros_like(nu)
 
             value_fn = ValueFn(R, r, rho)
-            return value_fn, (
-                value_fn,
-                AffineGaussian(F, d, Sigma),
-                LogMessage(S, s, xi),
-                False   # Not feasible
-            )
+            return value_fn, (value_fn, AffineGaussian(F, d, Sigma), LogMessage(S, s, xi), False)  # Not feasible
 
         return jax.lax.cond(
             pred=jnp.all(jnp.linalg.eigvalsh(G22) > 1e-8),
@@ -108,11 +86,7 @@ def log_forward_message(
             false_fun=_not_feasible_forward_pass,
         )
 
-    first_value_fn = ValueFn(
-        R=log_prior.L,
-        r=log_prior.l,
-        rho=log_prior.nu
-    )
+    first_value_fn = ValueFn(R=log_prior.L, r=log_prior.l, rho=log_prior.nu)
 
     nominal_marginal, nominal_kernels = nominal_posterior
 
@@ -133,10 +107,7 @@ def log_forward_message(
     J22 = (1.0 - damping) * R + damping * inv_P
     j2 = (1.0 - damping) * r
     j1 = jnp.zeros_like(j2)
-    tau = (
-        (1.0 - damping) * rho
-        - 0.5 * damping * logdet(2 * jnp.pi * P)
-    )
+    tau = (1.0 - damping) * rho - 0.5 * damping * logdet(2 * jnp.pi * P)
 
     J11 = symmetrize(J11)
     J22 = symmetrize(J22)
@@ -155,11 +126,7 @@ def log_forward_message(
         # log normalizer
         U = J11 - J21.T @ iJ22_J21
         u = j1 - J21.T @ iJ22_j2
-        eta = (
-            tau
-            + 0.5 * (dim * jnp.log(2 * jnp.pi) - logdet_J22)
-            + 0.5 * j2.T @ iJ22_j2
-        )
+        eta = tau + 0.5 * (dim * jnp.log(2 * jnp.pi) - logdet_J22) + 0.5 * j2.T @ iJ22_j2
         return Gaussian(_m, _P), LogMarginalNorm(U, u, eta)
 
     def _not_feasible_marginal():
@@ -176,17 +143,9 @@ def log_forward_message(
         true_fun=_feasible_marginal,
         false_fun=_not_feasible_marginal,
     )
-    return (
-        GaussMarkov(marginal, kernels),
-        log_marg_norm,
-        value_fns,
-        log_fwd_msgs,
-        feasible_pass
-    )
+    return (GaussMarkov(marginal, kernels), log_marg_norm, value_fns, log_fwd_msgs, feasible_pass)
 
 
-# The reverse smoother shares all orchestration with the forward one; only the
-# message-passing primitives differ. See varsmooth.smoothers._core.
 (
     reverse_markov_smoother,
     dual_objective,
