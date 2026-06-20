@@ -26,10 +26,8 @@ from varsmooth.utils import (
     none_or_idx,
     symmetrize,
     logdet,
-    eig,
+    bounded_while_loop,
 )
-
-from jaxopt._src.loop import while_loop as while_with_maxiter
 
 
 # @jax.jit
@@ -104,7 +102,7 @@ def log_backward_message(
             )
 
         return jax.lax.cond(
-            pred=jnp.all(eig(G11)[0] > 1e-8),
+            pred=jnp.all(jnp.linalg.eigvalsh(G11) > 1e-8),
             true_fun=_feasible_backward_pass,
             false_fun=_not_feasible_backward_pass,
         )
@@ -471,12 +469,11 @@ def iterated_forward_markov_smoother(
         return jnp.logical_and(iteration_count < max_iterations, next_temperature > min_temperature)
 
     # Run the iterative optimization
-    optimal_posterior, _, _ = while_with_maxiter(
+    optimal_posterior, _, _ = bounded_while_loop(
         cond_fun=iteration_condition,
         body_fun=iteration_body,
         init_val=(init_posterior, 0, init_temperature),
         maxiter=max_iterations,
-        jit=True,
     )
 
     return optimal_posterior

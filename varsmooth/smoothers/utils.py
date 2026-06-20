@@ -6,8 +6,6 @@ from jax import Array
 from jax import numpy as jnp
 from jax import scipy as jsc
 
-from jaxopt._src.loop import while_loop as while_with_maxiter
-
 from varsmooth.objects import (
     Gaussian,
     AffineGaussian,
@@ -18,7 +16,7 @@ from varsmooth.objects import (
     ValueFn,
     LogMessage
 )
-from varsmooth.utils import none_or_idx, none_or_shift, logdet
+from varsmooth.utils import none_or_idx, none_or_shift, logdet, bounded_while_loop
 
 
 def kl_between_marginals(p, q):
@@ -316,12 +314,11 @@ def line_search(
             operand=(param, state)
         )
 
-    _, state = while_with_maxiter(
+    _, state = bounded_while_loop(
         cond_fun=lambda x: jnp.abs(x[-1].gd_val) > rtol,
         body_fun=_iteration,
         init_val=(param, state),
         maxiter=max_iter,
-        jit=True,
     )
     return state.param.val, state.fn_val, state.gd_val, state.feasible
 
