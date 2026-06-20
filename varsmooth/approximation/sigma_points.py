@@ -3,7 +3,6 @@ from typing import NamedTuple
 import jax
 from jax import Array
 import jax.numpy as jnp
-import jax.scipy as jsc
 
 from jax.scipy.linalg import cho_solve
 
@@ -86,31 +85,3 @@ def quadratize_any(f, q, get_sigma_points):
         - 0.5 * jnp.trace(E_H @ (chol_x @ chol_x.T))
     )
     return Fxx, Fx, f0
-
-
-# def quadratize_any(fun, q, get_sigma_points):
-#     m_x, chol_x = get_sqrt(q)
-#     x_pts = get_sigma_points(m_x, chol_x)
-#
-#     _, dim = x_pts.points.shape
-#
-#     f_pts = jax.vmap(fun)(x_pts.points).squeeze()
-#     wf_pts = x_pts.wm * f_pts
-#
-#     a = jnp.sum(wf_pts)
-#     b = jnp.einsum("n,kn->k", wf_pts, x_pts.xi)
-#     C = (
-#         jnp.einsum("n,kn,hn->kh", wf_pts, x_pts.xi, x_pts.xi)
-#         - a * jnp.eye(dim)
-#     )
-#
-#     Q = chol_x @ jsc.linalg.solve(C, chol_x.T)
-#
-#     f0 = (
-#         a - 0.5 * jnp.trace(C)
-#         - jnp.dot(b, jsc.linalg.solve(chol_x, m_x))
-#         + 0.5 * m_x.T @ jsc.linalg.solve(Q, m_x)
-#     )
-#     Fx = jsc.linalg.solve(chol_x.T, b.T).T - jsc.linalg.solve(Q, m_x)
-#     Fxx = - jsc.linalg.inv(Q)
-#     return Fxx, Fx, f0

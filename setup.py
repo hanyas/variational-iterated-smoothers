@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name="varsmooth",
@@ -11,10 +11,8 @@ setup(
         "scipy",
         "jax",
         "jaxlib",
-        "jaxopt",
-        "typing_extensions",
         "matplotlib",
     ],
-    packages=["varsmooth"],
+    packages=find_packages(exclude=["tests", "examples", "experiments", "build*"]),
     zip_safe=False,
 )

@@ -16,7 +16,13 @@ from varsmooth.objects import (
     ValueFn,
     LogMessage
 )
-from varsmooth.utils import none_or_idx, none_or_shift, logdet, bounded_while_loop
+from varsmooth.utils import (
+    none_or_idx,
+    none_or_shift,
+    none_or_concat,
+    logdet,
+    bounded_while_loop,
+)
 
 
 def kl_between_marginals(p, q):
@@ -48,40 +54,53 @@ def statistical_expansion(
     return log_prior, log_transition, log_observation
 
 
+def std_forward_message(posterior: GaussMarkov) -> Gaussian:
+    """Marginals of a forward Gauss-Markov chain (root marginal + forward kernels)."""
+    init_marginal, kernels = posterior
+
+    def _forward_step(carry, kernel):
+        m, P = carry
+        F, d, Sigma = kernel
+        qn = Gaussian(mean=F @ m + d, cov=F @ P @ F.T + Sigma)
+        return qn, qn
+
+    _, marginals = jax.lax.scan(_forward_step, init_marginal, kernels)
+    return none_or_concat(marginals, init_marginal, position=1)
+
+
+def std_backward_message(posterior: GaussMarkov) -> Gaussian:
+    """Marginals of a reverse Gauss-Markov chain (leaf marginal + backward kernels)."""
+    last_marginal, kernels = posterior
+
+    def _backward_step(carry, kernel):
+        m, P = carry
+        F, d, Sigma = kernel
+        qn = Gaussian(mean=F @ m + d, cov=F @ P @ F.T + Sigma)
+        return qn, qn
+
+    _, marginals = jax.lax.scan(_backward_step, last_marginal, kernels, reverse=True)
+    return none_or_concat(marginals, last_marginal, position=-1)
+
+
 def initialize_reverse_with_forward(
     forward_markov: GaussMarkov
-):
-    from varsmooth.smoothers.forward_markov import std_forward_message
-
+) -> GaussMarkov:
     forward_marginals = std_forward_message(forward_markov)
 
-    Fs = jnp.zeros_like(forward_markov.kernels.F)
-    ds = jnp.zeros_like(forward_markov.kernels.d)
-    Sigmas = jnp.zeros_like(forward_markov.kernels.Sigma)
+    # reverse kernels q(x_k | x_{k+1}) from forward marginals + forward kernels
+    kernels = jax.vmap(get_reverse_kernel)(
+        none_or_shift(forward_marginals, -1),   # marginals 0 .. T-1
+        forward_markov.kernels,                 # forward kernels k+1 | k
+        none_or_shift(forward_marginals, 1),    # marginals 1 .. T
+    )
 
-    nb_steps = forward_markov.kernels.F.shape[0]
-    for k in range(nb_steps):
-
-        marginal = none_or_idx(forward_marginals, k)  # marginal at k
-        kernel = none_or_idx(forward_markov.kernels, k)  # kernel k+1 | k
-        next_marginal = none_or_idx(forward_marginals, k+1)  # marginal at k+1
-
-        _kernel = get_reverse_kernel(marginal, kernel, next_marginal)
-
-        Fs = Fs.at[k].set(_kernel.F)
-        ds = ds.at[k].set(_kernel.d)
-        Sigmas = Sigmas.at[k].set(_kernel.Sigma)
-
-    reverse_markov = GaussMarkov(
-        Gaussian(
+    return GaussMarkov(
+        marginal=Gaussian(
             mean=forward_marginals.mean[-1],
             cov=forward_marginals.cov[-1],
         ),
-        kernels=AffineGaussian(
-            F=Fs, d=ds, Sigma=Sigmas
-        )
+        kernels=kernels,
     )
-    return reverse_markov
 
 
 def get_marginal(

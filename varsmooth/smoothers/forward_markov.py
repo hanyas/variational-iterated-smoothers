@@ -19,6 +19,7 @@ from varsmooth.objects import (
 )
 from varsmooth.smoothers.utils import statistical_expansion, line_search
 from varsmooth.smoothers.utils import kl_between_forward_gauss_markovs
+from varsmooth.smoothers.utils import std_forward_message  # re-exported for back-compat
 
 from varsmooth.utils import (
     none_or_concat,
@@ -185,27 +186,6 @@ def log_backward_message(
         log_bwd_msgs,
         feasible_pass
     )
-
-
-# @jax.jit
-def std_forward_message(posterior: GaussMarkov) -> Gaussian:
-    init_marginal, kernels = posterior
-
-    def _forward_step(carry, args):
-        q = carry
-        kernel = args
-
-        m, P = q
-        F, d, Sigma = kernel
-
-        qn = Gaussian(
-            mean=F @ m + d,
-            cov=F @ P @ F.T + Sigma
-        )
-        return qn, qn
-
-    _, marginals = jax.lax.scan(_forward_step, init_marginal, kernels)
-    return none_or_concat(marginals, init_marginal, position=1)
 
 
 def forward_markov_smoother(
