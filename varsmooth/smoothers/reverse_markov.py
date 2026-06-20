@@ -1,8 +1,6 @@
-from typing import Callable, Tuple
-from functools import partial
+from typing import Tuple
 
 import jax
-from jax import Array
 from jax import numpy as jnp
 from jax import scipy as jsc
 
@@ -17,7 +15,7 @@ from varsmooth.objects import (
     LogMessage,
     ValueFn,
 )
-from varsmooth.smoothers.utils import statistical_expansion, line_search
+from varsmooth.smoothers._core import make_smoother_suite
 from varsmooth.smoothers.utils import kl_between_reverse_gauss_markovs
 from varsmooth.smoothers.utils import std_backward_message  # re-exported for back-compat
 
@@ -25,11 +23,9 @@ from varsmooth.utils import (
     none_or_concat,
     symmetrize,
     logdet,
-    bounded_while_loop,
 )
 
 
-# @jax.jit
 def log_forward_message(
     log_prior: LogPrior,
     log_transition: LogTransition,
@@ -59,17 +55,23 @@ def log_forward_message(
         G22 = symmetrize(G22)
 
         def _feasible_forward_pass():
-            S = G11 - G21.T @ jsc.linalg.solve(G22, G21)
-            s = g1 + G21.T @ jsc.linalg.solve(G22, g2)
+            dim = G22.shape[0]
+            chol_G22 = jsc.linalg.cho_factor(G22)
+            iG22_G21 = jsc.linalg.cho_solve(chol_G22, G21)
+            iG22_g2 = jsc.linalg.cho_solve(chol_G22, g2)
+            Sigma = jsc.linalg.cho_solve(chol_G22, jnp.eye(dim))
+            logdet_G22 = 2.0 * jnp.sum(jnp.log(jnp.diag(chol_G22[0])))
+
+            S = G11 - G21.T @ iG22_G21
+            s = g1 + G21.T @ iG22_g2
             xi = (
                 theta
-                + 0.5 * logdet(2 * jnp.pi * jsc.linalg.inv(G22))
-                + 0.5 * g2.T @ jsc.linalg.solve(G22, g2)
+                + 0.5 * (dim * jnp.log(2 * jnp.pi) - logdet_G22)
+                + 0.5 * g2.T @ iG22_g2
             )
 
-            F = jsc.linalg.solve(G22, G21)
-            d = jsc.linalg.solve(G22, g2)
-            Sigma = jsc.linalg.inv(G22)
+            F = iG22_G21
+            d = iG22_g2
 
             R = L + 1.0 / (1.0 - damping) * S
             r = l + 1.0 / (1.0 - damping) * s
@@ -140,24 +142,29 @@ def log_forward_message(
     J22 = symmetrize(J22)
 
     def _feasible_marginal():
+        dim = J22.shape[0]
+        chol_J22 = jsc.linalg.cho_factor(J22)
+        iJ22_J21 = jsc.linalg.cho_solve(chol_J22, J21)
+        iJ22_j2 = jsc.linalg.cho_solve(chol_J22, j2)
+        _P = jsc.linalg.cho_solve(chol_J22, jnp.eye(dim))
+        logdet_J22 = 2.0 * jnp.sum(jnp.log(jnp.diag(chol_J22[0])))
+
         # init marginal
-        _m = jsc.linalg.solve(J22, j2 + J21 @ m)
-        _P = jsc.linalg.inv(J22)
+        _m = jsc.linalg.cho_solve(chol_J22, j2 + J21 @ m)
 
         # log normalizer
-        U = J11 - J21.T @ jsc.linalg.solve(J22, J21)
-        u = j1 - J21.T @ jsc.linalg.solve(J22, j2)
+        U = J11 - J21.T @ iJ22_J21
+        u = j1 - J21.T @ iJ22_j2
         eta = (
             tau
-            + 0.5 * logdet(2 * jnp.pi * jsc.linalg.inv(J22))
-            + 0.5 * j2.T @ jsc.linalg.solve(J22, j2)
+            + 0.5 * (dim * jnp.log(2 * jnp.pi) - logdet_J22)
+            + 0.5 * j2.T @ iJ22_j2
         )
         return Gaussian(_m, _P), LogMarginalNorm(U, u, eta)
 
     def _not_feasible_marginal():
         _m = jnp.zeros_like(nominal_marginal.mean)
         _P = jnp.zeros_like(nominal_marginal.cov)
-        marginal = Gaussian(_m, _P)
 
         U = jnp.zeros_like(J11)
         u = jnp.zeros_like(j1)
@@ -178,335 +185,16 @@ def log_forward_message(
     )
 
 
-def reverse_markov_smoother(
-    observations: Array,
-    log_prior_fn: Callable,
-    log_transition_fn: Callable,
-    log_observation_fn: Callable,
-    reference_posterior: GaussMarkov,
-    temperature: float
-) -> GaussMarkov:
-
-    marginals = std_backward_message(reference_posterior)
-
-    log_prior, log_transition, log_observation = \
-        statistical_expansion(
-            observations,
-            log_prior_fn,
-            log_transition_fn,
-            log_observation_fn,
-            reference_posterior.kernels,
-            marginals,
-        )
-
-    damping = temperature / (1.0 + temperature)
-    posterior, _, _, _, _ = log_forward_message(
-        log_prior,
-        log_transition,
-        log_observation,
-        reference_posterior,
-        damping,
-    )
-    return posterior
-
-
-def dual_objective(
-    log_prior: LogPrior,
-    log_transition: LogTransition,
-    log_observation: LogObservation,
-    reference_posterior: GaussMarkov,
-    kl_constraint: float,
-    damping: float,
-):
-    posterior, log_norm, _, _, feasible = log_forward_message(
-        log_prior,
-        log_transition,
-        log_observation,
-        reference_posterior,
-        damping,
-    )
-
-    def _feasible_objective():
-        U, u, eta = log_norm
-        m, _ = reference_posterior.marginal
-
-        dual_value = damping * kl_constraint
-        dual_value += - 0.5 * m.T @ U @ m + m.T @ u + eta
-        return dual_value / (1.0 - damping)
-
-    def _not_feasible_objective():
-        return jnp.inf
-
-    return jax.lax.cond(
-        pred=jnp.all(feasible),
-        true_fun=_feasible_objective,
-        false_fun=_not_feasible_objective
-    )
-
-
-def vanilla_objective(
-    log_prior: LogPrior,
-    log_transition: LogTransition,
-    log_observation: LogObservation,
-    reference_posterior: GaussMarkov,
-):
-    _, log_norm, _, _, _ = log_forward_message(
-        log_prior,
-        log_transition,
-        log_observation,
-        reference_posterior,
-        0.0,
-    )
-
-    U, u, eta = log_norm
-    m, _ = reference_posterior.marginal
-    return - 0.5 * m.T @ U @ m + m.T @ u + eta
-
-
-@partial(jax.jit, static_argnames=[
-    'log_prior_fn',
-    'log_transition_fn',
-    'log_observation_fn',
-    'kl_constraint',
-    'init_temperature',
-    'min_temperature',
-    'max_iterations'
-])
-def iterated_reverse_markov_smoother(
-    observations: Array,
-    log_prior_fn: Callable,
-    log_transition_fn: Callable,
-    log_observation_fn: Callable,
-    init_posterior: GaussMarkov,
-    kl_constraint: float,
-    init_temperature: float = 1e12,
-    min_temperature: float = 1e-12,
-    max_iterations: int = 1000,
-):
-    """
-    Iterated reverse Markov smoother with early stopping based on temperature.
-
-    This function performs variational inference by iteratively updating the posterior
-    until convergence. The iterations stop when either:
-    1. Maximum iterations are reached, or
-    2. Temperature drops below min_temperature (indicating convergence)
-
-    Args:
-        observations: Array of observations
-        log_prior_fn: Function to compute log prior
-        log_transition_fn: Function to compute log transition
-        log_observation_fn: Function to compute log observation likelihood
-        init_posterior: Initial posterior estimate
-        kl_constraint: KL divergence constraint for the optimization
-        init_temperature: Initial temperature for line search
-        min_temperature: Minimum temperature threshold for early stopping
-        max_iterations: Maximum number of iterations
-
-    Returns:
-        Optimal posterior after convergence
-    """
-
-    def single_iteration(reference, iteration_idx):
-        # Step 1: Compute marginals and statistical expansion
-        marginals = std_backward_message(reference)
-        log_prior, log_transition, log_observation = statistical_expansion(
-            observations,
-            log_prior_fn,
-            log_transition_fn,
-            log_observation_fn,
-            reference.kernels,
-            marginals,
-        )
-
-        # Step 2: Define dual objective function for line search
-        def dual_objective_fn(temperature):
-            """Dual objective function for temperature optimization."""
-            damping = temperature / (1.0 + temperature)
-            return dual_objective(
-                log_prior,
-                log_transition,
-                log_observation,
-                reference,
-                kl_constraint,
-                damping,
-            )
-
-        # Step 3: Define gradient function for line search
-        def dual_gradient_fn(temperature):
-            """Gradient of dual objective with respect to temperature."""
-            damping = temperature / (1.0 + temperature)
-            posterior, _, _, _, feasible_pass = log_forward_message(
-                log_prior,
-                log_transition,
-                log_observation,
-                reference,
-                damping,
-            )
-
-            def compute_gradient():
-                """Compute gradient when forward pass is feasible."""
-                kl_div = kl_between_reverse_gauss_markovs(
-                    marginals=std_backward_message(posterior),
-                    gauss_markov=posterior,
-                    ref_gauss_markov=reference
-                )
-                return kl_constraint - kl_div
-
-            def inf_gradient():
-                """Return infinity when forward pass is not feasible."""
-                return jnp.inf
-
-            return jax.lax.cond(
-                pred=jnp.all(feasible_pass),
-                true_fun=lambda _: compute_gradient(),
-                false_fun=lambda _: inf_gradient(),
-                operand=None
-            )
-
-        # Step 4: Perform line search to find optimal temperature
-        temperature, dual_value, _, line_search_feasible = line_search(
-            init_temperature,
-            dual_objective_fn,
-            dual_gradient_fn,
-            rtol=0.1 * kl_constraint
-        )
-
-        # Step 5: Apply the optimal temperature to get final posterior
-        def apply_optimal_solution():
-            """Apply the optimal temperature to compute final posterior."""
-            damping = temperature / (1.0 + temperature)
-            posterior, _, _, _, _ = log_forward_message(
-                log_prior,
-                log_transition,
-                log_observation,
-                reference,
-                damping,
-            )
-
-            # Compute KL divergence for logging
-            kl_div = kl_between_reverse_gauss_markovs(
-                marginals=std_backward_message(posterior),
-                gauss_markov=posterior,
-                ref_gauss_markov=reference
-            )
-
-            # Compute objective value for logging
-            obj_value = vanilla_objective(
-                log_prior,
-                log_transition,
-                log_observation,
-                posterior
-            )
-
-            # Log progress
-            jax.debug.print(
-                "iter: {iter}, damping: {damp}, kl_div: {kl}, dual: {dual}, val: {val}",
-                iter=iteration_idx,
-                damp=damping,
-                kl=kl_div,
-                dual=dual_value,
-                val=obj_value
-            )
-
-            return posterior
-
-        def use_reference():
-            """Use reference posterior when line search fails."""
-            jax.debug.print(
-                "iter: {iter} not feasible, process might have converged",
-                iter=iteration_idx
-            )
-            return reference
-
-        # Choose between optimal solution and reference based on feasibility
-        posterior = jax.lax.cond(
-            pred=line_search_feasible,
-            true_fun=lambda _: apply_optimal_solution(),
-            false_fun=lambda _: use_reference(),
-            operand=None
-        )
-
-        return posterior, temperature
-
-    def iteration_body(carry):
-        current_posterior, iteration_count, _ = carry
-        next_posterior, next_temperature = single_iteration(current_posterior, iteration_count)
-        return next_posterior, iteration_count + 1, next_temperature
-
-    def iteration_condition(carry):
-        _, iteration_count, next_temperature = carry
-        # Continue if: not reached max iterations AND temperature is above minimum
-        return jnp.logical_and(iteration_count < max_iterations, next_temperature > min_temperature)
-
-    # Run the iterative optimization
-    optimal_posterior, _, _ = bounded_while_loop(
-        cond_fun=iteration_condition,
-        body_fun=iteration_body,
-        init_val=(init_posterior, 0, init_temperature),
-        maxiter=max_iterations,
-    )
-
-    return optimal_posterior
-
-
-@partial(jax.jit, static_argnames=[
-    'log_prior_fn',
-    'log_transition_fn',
-    'log_observation_fn',
-    'max_iterations'
-])
-def undamped_iterated_reverse_markov_smoother(
-    observations: Array,
-    log_prior_fn: Callable,
-    log_transition_fn: Callable,
-    log_observation_fn: Callable,
-    init_posterior: GaussMarkov,
-    max_iterations: int = 1000,
-):
-
-    def single_iteration(reference, iteration_idx):
-
-        marginals = std_backward_message(reference)
-        log_prior, log_transition, log_observation = \
-            statistical_expansion(
-                observations,
-                log_prior_fn,
-                log_transition_fn,
-                log_observation_fn,
-                reference.kernels,
-                marginals,
-            )
-
-        optimal_posterior, _, _, _, _ = log_forward_message(
-            log_prior,
-            log_transition,
-            log_observation,
-            reference,
-            damping=0.0
-        )
-
-        kl_div = kl_between_reverse_gauss_markovs(
-            marginals=std_backward_message(optimal_posterior),
-            gauss_markov=optimal_posterior,
-            ref_gauss_markov=reference
-        )
-
-        # Compute objective value for logging
-        obj_val = vanilla_objective(
-            log_prior,
-            log_transition,
-            log_observation,
-            optimal_posterior
-        )
-
-        jax.debug.print(
-            "iter: {a}, damping: {b}, kl_div: {c} val: {v}",
-            a=iteration_idx, b=0.0, c=kl_div, v=obj_val
-        )
-
-        return optimal_posterior, optimal_posterior
-
-    optimal_posterior, _ = jax.lax.scan(
-        single_iteration, init_posterior, xs=jnp.arange(max_iterations)
-    )
-    return optimal_posterior
+# The reverse smoother shares all orchestration with the forward one; only the
+# message-passing primitives differ. See varsmooth.smoothers._core.
+(
+    reverse_markov_smoother,
+    dual_objective,
+    vanilla_objective,
+    iterated_reverse_markov_smoother,
+    undamped_iterated_reverse_markov_smoother,
+) = make_smoother_suite(
+    log_message_fn=log_forward_message,
+    std_marginal_fn=std_backward_message,
+    kl_fn=kl_between_reverse_gauss_markovs,
+)
