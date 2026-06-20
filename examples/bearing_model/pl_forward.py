@@ -80,7 +80,7 @@ forward_markov = iterated_forward_markov_smoother(
     init_posterior,
     kl_constraint=100,
     init_temperature=1e6,
-    max_iter=50
+    max_iterations=50
 )
 marginals = std_forward_message(forward_markov)
 
