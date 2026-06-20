@@ -3,7 +3,7 @@ from functools import partial
 import jax
 from jax import numpy as jnp
 
-from varsmooth.smoothers.utils import statistical_expansion, line_search
+from varsmooth.smoothers.utils import line_search, statistical_expansion
 from varsmooth.utils import bounded_while_loop
 
 
@@ -47,9 +47,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
             marginals,
         )
         damping = temperature / (1.0 + temperature)
-        posterior, _, _, _, _ = log_message_fn(
-            log_prior, log_transition, log_observation, reference_posterior, damping
-        )
+        posterior, _, _, _, _ = log_message_fn(log_prior, log_transition, log_observation, reference_posterior, damping)
         return posterior
 
     def dual_objective(
@@ -79,19 +77,20 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         log_observation,
         reference_posterior,
     ):
-        _, log_norm, _, _, _ = log_message_fn(
-            log_prior, log_transition, log_observation, reference_posterior, 0.0
-        )
+        _, log_norm, _, _, _ = log_message_fn(log_prior, log_transition, log_observation, reference_posterior, 0.0)
         U, u, eta = log_norm
         m, _ = reference_posterior.marginal
         return -0.5 * m.T @ U @ m + m.T @ u + eta
 
-    @partial(jax.jit, static_argnames=[
-        'log_prior_fn',
-        'log_transition_fn',
-        'log_observation_fn',
-        'max_iterations',
-    ])
+    @partial(
+        jax.jit,
+        static_argnames=[
+            "log_prior_fn",
+            "log_transition_fn",
+            "log_observation_fn",
+            "max_iterations",
+        ],
+    )
     def iterated_smoother(
         observations,
         log_prior_fn,
@@ -123,14 +122,22 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
             def dual_objective_fn(temperature):
                 damping = temperature / (1.0 + temperature)
                 return dual_objective(
-                    log_prior, log_transition, log_observation,
-                    reference, kl_constraint, damping,
+                    log_prior,
+                    log_transition,
+                    log_observation,
+                    reference,
+                    kl_constraint,
+                    damping,
                 )
 
             def dual_gradient_fn(temperature):
                 damping = temperature / (1.0 + temperature)
                 posterior, _, _, _, feasible_pass = log_message_fn(
-                    log_prior, log_transition, log_observation, reference, damping,
+                    log_prior,
+                    log_transition,
+                    log_observation,
+                    reference,
+                    damping,
                 )
 
                 def compute_gradient():
@@ -158,7 +165,11 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
             def apply_optimal_solution():
                 damping = temperature / (1.0 + temperature)
                 posterior, _, _, _, _ = log_message_fn(
-                    log_prior, log_transition, log_observation, reference, damping,
+                    log_prior,
+                    log_transition,
+                    log_observation,
+                    reference,
+                    damping,
                 )
                 kl_div = kl_fn(
                     marginals=std_marginal_fn(posterior),
@@ -166,18 +177,25 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                     ref_gauss_markov=reference,
                 )
                 obj_value = vanilla_objective(
-                    log_prior, log_transition, log_observation, posterior,
+                    log_prior,
+                    log_transition,
+                    log_observation,
+                    posterior,
                 )
                 jax.debug.print(
-                    "iter: {iter}, damping: {damp}, kl_div: {kl}, dual: {dual}, val: {val}",
-                    iter=iteration_idx, damp=damping, kl=kl_div,
-                    dual=dual_value, val=obj_value,
+                    "iter {iter:>4d} | damping {damp:>8.2e} | kl {kl:>8.3f} "
+                    "| dual {dual:>12.3f} | val {val:>12.3f}",
+                    iter=iteration_idx,
+                    damp=damping,
+                    kl=kl_div,
+                    dual=dual_value,
+                    val=obj_value,
                 )
                 return posterior
 
             def use_reference():
                 jax.debug.print(
-                    "iter: {iter} not feasible, process might have converged",
+                    "iter {iter:>4d} | not feasible, process might have converged",
                     iter=iteration_idx,
                 )
                 return reference
@@ -192,9 +210,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
 
         def iteration_body(carry):
             current_posterior, iteration_count, _ = carry
-            next_posterior, next_temperature = single_iteration(
-                current_posterior, iteration_count
-            )
+            next_posterior, next_temperature = single_iteration(current_posterior, iteration_count)
             return next_posterior, iteration_count + 1, next_temperature
 
         def iteration_condition(carry):
@@ -212,12 +228,15 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         )
         return optimal_posterior
 
-    @partial(jax.jit, static_argnames=[
-        'log_prior_fn',
-        'log_transition_fn',
-        'log_observation_fn',
-        'max_iterations',
-    ])
+    @partial(
+        jax.jit,
+        static_argnames=[
+            "log_prior_fn",
+            "log_transition_fn",
+            "log_observation_fn",
+            "max_iterations",
+        ],
+    )
     def undamped_iterated_smoother(
         observations,
         log_prior_fn,
@@ -237,7 +256,11 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                 marginals,
             )
             optimal_posterior, _, _, _, _ = log_message_fn(
-                log_prior, log_transition, log_observation, reference, 0.0,
+                log_prior,
+                log_transition,
+                log_observation,
+                reference,
+                0.0,
             )
             kl_div = kl_fn(
                 marginals=std_marginal_fn(optimal_posterior),
@@ -245,17 +268,20 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                 ref_gauss_markov=reference,
             )
             obj_val = vanilla_objective(
-                log_prior, log_transition, log_observation, optimal_posterior,
+                log_prior,
+                log_transition,
+                log_observation,
+                optimal_posterior,
             )
             jax.debug.print(
-                "iter: {a}, damping: {b}, kl_div: {c} val: {v}",
-                a=iteration_idx, b=0.0, c=kl_div, v=obj_val,
+                "iter {iter:>4d} | kl {kl:>8.3f} | val {val:>12.3f}",
+                iter=iteration_idx,
+                kl=kl_div,
+                val=obj_val,
             )
             return optimal_posterior, optimal_posterior
 
-        optimal_posterior, _ = jax.lax.scan(
-            single_iteration, init_posterior, xs=jnp.arange(max_iterations)
-        )
+        optimal_posterior, _ = jax.lax.scan(single_iteration, init_posterior, xs=jnp.arange(max_iterations))
         return optimal_posterior
 
     return (

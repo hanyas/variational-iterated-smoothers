@@ -314,7 +314,8 @@ def iterated_two_filter_smoother(
 
             # Log progress
             jax.debug.print(
-                "iter: {iter}, damping: {damp}, fwd_kl_div: {fwd_kl}, rvs_kl_div: {rvs_kl}, dual: {dual}",
+                "iter {iter:>4d} | damping {damp:>8.2e} | fwd_kl {fwd_kl:>8.3f} "
+                "| rvs_kl {rvs_kl:>8.3f} | dual {dual:>12.3f}",
                 iter=iteration_idx,
                 damp=damping,
                 fwd_kl=fwd_kl_div,
@@ -327,7 +328,7 @@ def iterated_two_filter_smoother(
         def use_reference():
             """Use reference when line search fails."""
             jax.debug.print(
-                "iter: {iter} not feasible, process might have converged",
+                "iter {iter:>4d} | not feasible, process might have converged",
                 iter=iteration_idx
             )
             return reference_marginals, forward_reference, reverse_reference
