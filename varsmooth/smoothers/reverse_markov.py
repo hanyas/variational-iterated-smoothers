@@ -470,3 +470,66 @@ def iterated_reverse_markov_smoother(
     )
 
     return optimal_posterior
+
+
+@partial(jax.jit, static_argnames=[
+    'log_prior_fn',
+    'log_transition_fn',
+    'log_observation_fn',
+    'max_iterations'
+])
+def undamped_iterated_reverse_markov_smoother(
+    observations: Array,
+    log_prior_fn: Callable,
+    log_transition_fn: Callable,
+    log_observation_fn: Callable,
+    init_posterior: GaussMarkov,
+    max_iterations: int = 1000,
+):
+
+    def single_iteration(reference, iteration_idx):
+
+        marginals = std_backward_message(reference)
+        log_prior, log_transition, log_observation = \
+            statistical_expansion(
+                observations,
+                log_prior_fn,
+                log_transition_fn,
+                log_observation_fn,
+                reference.kernels,
+                marginals,
+            )
+
+        optimal_posterior, _, _, _, _ = log_forward_message(
+            log_prior,
+            log_transition,
+            log_observation,
+            reference,
+            damping=0.0
+        )
+
+        kl_div = kl_between_reverse_gauss_markovs(
+            marginals=std_backward_message(optimal_posterior),
+            gauss_markov=optimal_posterior,
+            ref_gauss_markov=reference
+        )
+
+        # Compute objective value for logging
+        obj_val = vanilla_objective(
+            log_prior,
+            log_transition,
+            log_observation,
+            optimal_posterior
+        )
+
+        jax.debug.print(
+            "iter: {a}, damping: {b}, kl_div: {c} val: {v}",
+            a=iteration_idx, b=0.0, c=kl_div, v=obj_val
+        )
+
+        return optimal_posterior, optimal_posterior
+
+    optimal_posterior, _ = jax.lax.scan(
+        single_iteration, init_posterior, xs=jnp.arange(max_iterations)
+    )
+    return optimal_posterior
