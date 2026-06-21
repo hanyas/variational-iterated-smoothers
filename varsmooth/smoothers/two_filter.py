@@ -8,31 +8,30 @@ from jax import numpy as jnp
 from varsmooth.objects import (
     Gaussian,
     GaussMarkov,
-    Potential,
-    LogConditionalNorm
+    ValueFn,
+    LogMessage
 )
 from varsmooth.smoothers.utils import (
     statistical_expansion,
-    merge_messages,
     log_to_std_form,
     std_to_log_form,
-    line_search,
+    merge_messages,
     kl_between_reverse_gauss_markovs,
-    kl_between_forward_gauss_markovs
+    kl_between_forward_gauss_markovs,
+    line_search,
 )
 from varsmooth.utils import (
     none_or_concat,
     none_or_shift,
+    bounded_while_loop,
 )
 
-from varsmooth.smoothers.forward_markov import backward_log_message
-from varsmooth.smoothers.forward_markov import forward_std_message
-from varsmooth.smoothers.reverse_markov import forward_log_message
-from varsmooth.smoothers.reverse_markov import backward_std_message
+from varsmooth.smoothers.forward_markov import log_backward_message
+from varsmooth.smoothers.forward_markov import std_forward_message
+from varsmooth.smoothers.reverse_markov import log_forward_message
+from varsmooth.smoothers.reverse_markov import std_backward_message
 
 from varsmooth.smoothers.reverse_markov import dual_objective
-
-from jaxopt._src.loop import while_loop as while_with_maxiter
 
 
 def two_filter_smoother(
@@ -45,7 +44,7 @@ def two_filter_smoother(
     temperature: float
 ) -> Gaussian:
 
-    marginals = forward_std_message(forward_reference)
+    marginals = std_forward_message(forward_reference)
 
     log_prior, log_transition, log_observation = \
         statistical_expansion(
@@ -58,7 +57,7 @@ def two_filter_smoother(
         )
 
     damping = temperature / (1.0 + temperature)
-    forward_posterior, _, _, backward_message, _ = backward_log_message(
+    forward_posterior, _, _, backward_message, _ = log_backward_message(
         log_prior,
         log_transition,
         log_observation,
@@ -66,7 +65,7 @@ def two_filter_smoother(
         damping,
     )
 
-    reverse_posterior, _, forward_message, _, _ = forward_log_message(
+    reverse_posterior, _, forward_message, _, _ = log_forward_message(
         log_prior,
         log_transition,
         log_observation,
@@ -75,13 +74,13 @@ def two_filter_smoother(
     )
 
     fwd_kl_div = kl_between_forward_gauss_markovs(
-        forward_std_message(forward_posterior),
+        std_forward_message(forward_posterior),
         forward_posterior,
         forward_reference
     )
 
     rvs_kl_div = kl_between_reverse_gauss_markovs(
-        backward_std_message(reverse_posterior),
+        std_backward_message(reverse_posterior),
         reverse_posterior,
         reverse_reference
     )
@@ -99,8 +98,8 @@ def two_filter_smoother(
 
 def update_marginals(
     marginals: Gaussian,
-    forward_message: Potential,
-    backward_message: LogConditionalNorm,
+    forward_message: ValueFn,
+    backward_message: LogMessage,
     first_boundary: Gaussian,
     last_boundary: Gaussian,
     damping: float
@@ -115,16 +114,16 @@ def update_marginals(
     log_last_boundary = std_to_log_form(last_boundary)
 
     # update all but last marginal
-    potentials = Potential(
+    value_fns = ValueFn(
         R=(1.0 - damping) * log_messages.R + damping * log_marginals.R[1:-1],
         r=(1.0 - damping) * log_messages.r + damping * log_marginals.r[1:-1],
         rho=(1.0 - damping) * log_messages.rho + damping * log_marginals.rho[1:-1]
     )
 
     # append first marginal
-    potentials = none_or_concat(
-        potentials,
-        Potential(
+    value_fns = none_or_concat(
+        value_fns,
+        ValueFn(
             R=log_first_boundary.R,
             r=log_first_boundary.r,
             rho=log_first_boundary.rho,
@@ -132,9 +131,9 @@ def update_marginals(
     )
 
     # append last marginal
-    potentials = none_or_concat(
-        potentials,
-        Potential(
+    value_fns = none_or_concat(
+        value_fns,
+        ValueFn(
             R=log_last_boundary.R,
             r=log_last_boundary.r,
             rho=log_last_boundary.rho,
@@ -142,7 +141,7 @@ def update_marginals(
         position=-1
     )
 
-    return jax.vmap(log_to_std_form)(potentials)
+    return jax.vmap(log_to_std_form)(value_fns)
 
 
 @partial(jax.jit, static_argnames=[
@@ -231,7 +230,7 @@ def iterated_two_filter_smoother(
         def dual_gradient_fn(temperature):
             """Gradient of dual objective with respect to temperature."""
             damping = temperature / (1.0 + temperature)
-            posterior, _, _, _, feasible_pass = forward_log_message(
+            posterior, _, _, _, feasible_pass = log_forward_message(
                 log_prior,
                 log_transition,
                 log_observation,
@@ -242,7 +241,7 @@ def iterated_two_filter_smoother(
             def compute_gradient():
                 """Compute gradient when forward pass is feasible."""
                 kl_div = kl_between_reverse_gauss_markovs(
-                    marginals=backward_std_message(posterior),
+                    marginals=std_backward_message(posterior),
                     gauss_markov=posterior,
                     ref_gauss_markov=reverse_reference
                 )
@@ -273,7 +272,7 @@ def iterated_two_filter_smoother(
             damping = temperature / (1.0 + temperature)
 
             # Forward pass
-            forward_posterior, _, _, backward_message, _ = backward_log_message(
+            forward_posterior, _, _, backward_message, _ = log_backward_message(
                 log_prior,
                 log_transition,
                 log_observation,
@@ -282,7 +281,7 @@ def iterated_two_filter_smoother(
             )
 
             # Reverse pass
-            reverse_posterior, _, forward_message, _, _ = forward_log_message(
+            reverse_posterior, _, forward_message, _, _ = log_forward_message(
                 log_prior,
                 log_transition,
                 log_observation,
@@ -292,13 +291,13 @@ def iterated_two_filter_smoother(
 
             # Compute KL divergences for logging
             fwd_kl_div = kl_between_forward_gauss_markovs(
-                forward_std_message(forward_posterior),
+                std_forward_message(forward_posterior),
                 forward_posterior,
                 forward_reference
             )
 
             rvs_kl_div = kl_between_reverse_gauss_markovs(
-                backward_std_message(reverse_posterior),
+                std_backward_message(reverse_posterior),
                 reverse_posterior,
                 reverse_reference
             )
@@ -315,7 +314,8 @@ def iterated_two_filter_smoother(
 
             # Log progress
             jax.debug.print(
-                "iter: {iter}, damping: {damp}, fwd_kl_div: {fwd_kl}, rvs_kl_div: {rvs_kl}, dual: {dual}",
+                "iter {iter:>4d} | damping {damp:>8.2e} | fwd_kl {fwd_kl:>8.3f} "
+                "| rvs_kl {rvs_kl:>8.3f} | dual {dual:>12.3f}",
                 iter=iteration_idx,
                 damp=damping,
                 fwd_kl=fwd_kl_div,
@@ -328,7 +328,7 @@ def iterated_two_filter_smoother(
         def use_reference():
             """Use reference when line search fails."""
             jax.debug.print(
-                "iter: {iter} not feasible, process might have converged",
+                "iter {iter:>4d} | not feasible, process might have converged",
                 iter=iteration_idx
             )
             return reference_marginals, forward_reference, reverse_reference
@@ -356,16 +356,15 @@ def iterated_two_filter_smoother(
         return jnp.logical_and(iteration_count < max_iterations, next_temperature > min_temperature)
 
     # Initialize state
-    init_marginals = forward_std_message(init_forward_posterior)
+    init_marginals = std_forward_message(init_forward_posterior)
     init_state = (init_marginals, init_forward_posterior, init_reverse_posterior)
 
     # Run the iterative optimization
-    final_state, _, _ = while_with_maxiter(
+    final_state, _, _ = bounded_while_loop(
         cond_fun=iteration_condition,
         body_fun=iteration_body,
         init_val=(init_state, 0, init_temperature),
         maxiter=max_iterations,
-        jit=True,
     )
 
     # Extract final marginals

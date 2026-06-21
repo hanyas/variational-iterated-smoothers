@@ -7,6 +7,11 @@ import jax.scipy as jsc
 from varsmooth.utils import logdet
 
 
+def quad_predict(M: Array, v: Array, c: Array, x: Array) -> Array:
+    """Evaluate the log-quadratic form ``-0.5 xᵀ M x + vᵀ x + c`` at ``x``."""
+    return -0.5 * jnp.dot(x, jnp.dot(M, x)) + v @ x + c
+
+
 class Gaussian(NamedTuple):
     mean: Array
     cov: Array
@@ -25,23 +30,6 @@ class Gaussian(NamedTuple):
         sample = self.sample(key)
         log_prob = self.log_prob(sample)
         return sample, log_prob
-
-
-class AdditiveGaussianModel(NamedTuple):
-    fun: Callable
-    noise: Gaussian
-
-    def log_prob(self, y, x):
-        diff = y - self.fun(x)
-        return (
-            - 0.5 * diff.T @ jsc.linalg.solve(self.noise.cov, diff)
-            - 0.5 * logdet(2 * jnp.pi * self.noise.cov)
-        )
-
-
-class ConditionalMomentsModel(NamedTuple):
-    mean_fn: Callable
-    cov_fn: Callable
 
 
 class AffineGaussian(NamedTuple):
@@ -70,13 +58,30 @@ class GaussMarkov(NamedTuple):
     kernels: AffineGaussian
 
 
-class LogConditionalNorm(NamedTuple):
+class AdditiveGaussianModel(NamedTuple):
+    fun: Callable
+    noise: Gaussian
+
+    def log_prob(self, y, x):
+        diff = y - self.fun(x)
+        return (
+            - 0.5 * diff.T @ jsc.linalg.solve(self.noise.cov, diff)
+            - 0.5 * logdet(2 * jnp.pi * self.noise.cov)
+        )
+
+
+class ConditionalMomentsModel(NamedTuple):
+    mean_fn: Callable
+    cov_fn: Callable
+
+
+class LogMessage(NamedTuple):
     S: Array
     s: Array
     xi: Array
 
     def predict(self, x: Array) -> Array:
-        return -0.5 * jnp.dot(x, jnp.dot(self.S, x)) + self.s @ x + self.xi
+        return quad_predict(self.S, self.s, self.xi, x)
 
 
 class LogMarginalNorm(NamedTuple):
@@ -85,13 +90,16 @@ class LogMarginalNorm(NamedTuple):
     eta: Array
 
     def predict(self, x: Array) -> Array:
-        return -0.5 * jnp.dot(x, jnp.dot(self.U, x)) + self.u @ x + self.eta
+        return quad_predict(self.U, self.u, self.eta, x)
 
 
-class Potential(NamedTuple):
+class ValueFn(NamedTuple):
     R: Array
     r: Array
     rho: Array
+
+    def predict(self, x: Array) -> Array:
+        return quad_predict(self.R, self.r, self.rho, x)
 
 
 class LogPrior(NamedTuple):
@@ -114,3 +122,7 @@ class LogObservation(NamedTuple):
     L: Array
     l: Array
     nu: Array
+
+    def predict(self, x: Array) -> Array:
+        return quad_predict(self.L, self.l, self.nu, x)
+

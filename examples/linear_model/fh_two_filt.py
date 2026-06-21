@@ -9,7 +9,7 @@ from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.smoothers.two_filter import two_filter_smoother
 from varsmooth.smoothers.two_filter import iterated_two_filter_smoother
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
-from varsmooth.smoothers.forward_markov import forward_std_message
+from varsmooth.smoothers.forward_markov import std_forward_message
 
 from varsmooth.approximation import gauss_hermite_quadratization as quadratize
 from varsmooth.approximation.fourier_hermite import get_log_prior
@@ -101,7 +101,7 @@ var_marginals = two_filter_smoother(
     init_rvs_posterior,
     1e8,
 )
-init_marginals = forward_std_message(init_fwd_posterior)
+init_marginals = std_forward_message(init_fwd_posterior)
 
 np.testing.assert_allclose(init_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
 np.testing.assert_allclose(init_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)

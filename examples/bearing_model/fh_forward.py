@@ -8,7 +8,7 @@ from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import GaussMarkov
 
 from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
-from varsmooth.smoothers.forward_markov import forward_std_message
+from varsmooth.smoothers.forward_markov import std_forward_message
 
 from varsmooth.approximation import gauss_hermite_quadratization as quadratize
 from varsmooth.approximation.fourier_hermite import get_log_prior
@@ -78,7 +78,7 @@ forward_markov = iterated_forward_markov_smoother(
     kl_constraint=100,
     init_temperature=1e6,
 )
-marginals = forward_std_message(forward_markov)
+marginals = std_forward_message(forward_markov)
 
 plt.figure(figsize=(7, 7))
 plt.plot(
