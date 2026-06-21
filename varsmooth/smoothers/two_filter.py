@@ -23,6 +23,7 @@ from varsmooth.smoothers.utils import (
 from varsmooth.utils import (
     none_or_concat,
     none_or_shift,
+    bounded_while_loop,
 )
 
 from varsmooth.smoothers.forward_markov import log_backward_message
@@ -31,8 +32,6 @@ from varsmooth.smoothers.reverse_markov import log_forward_message
 from varsmooth.smoothers.reverse_markov import std_backward_message
 
 from varsmooth.smoothers.reverse_markov import dual_objective
-
-from jaxopt._src.loop import while_loop as while_with_maxiter
 
 
 def two_filter_smoother(
@@ -315,7 +314,8 @@ def iterated_two_filter_smoother(
 
             # Log progress
             jax.debug.print(
-                "iter: {iter}, damping: {damp}, fwd_kl_div: {fwd_kl}, rvs_kl_div: {rvs_kl}, dual: {dual}",
+                "iter {iter:>4d} | damping {damp:>8.2e} | fwd_kl {fwd_kl:>8.3f} "
+                "| rvs_kl {rvs_kl:>8.3f} | dual {dual:>12.3f}",
                 iter=iteration_idx,
                 damp=damping,
                 fwd_kl=fwd_kl_div,
@@ -328,7 +328,7 @@ def iterated_two_filter_smoother(
         def use_reference():
             """Use reference when line search fails."""
             jax.debug.print(
-                "iter: {iter} not feasible, process might have converged",
+                "iter {iter:>4d} | not feasible, process might have converged",
                 iter=iteration_idx
             )
             return reference_marginals, forward_reference, reverse_reference
@@ -360,12 +360,11 @@ def iterated_two_filter_smoother(
     init_state = (init_marginals, init_forward_posterior, init_reverse_posterior)
 
     # Run the iterative optimization
-    final_state, _, _ = while_with_maxiter(
+    final_state, _, _ = bounded_while_loop(
         cond_fun=iteration_condition,
         body_fun=iteration_body,
         init_val=(init_state, 0, init_temperature),
         maxiter=max_iterations,
-        jit=True,
     )
 
     # Extract final marginals

@@ -7,6 +7,11 @@ import jax.scipy as jsc
 from varsmooth.utils import logdet
 
 
+def quad_predict(M: Array, v: Array, c: Array, x: Array) -> Array:
+    """Evaluate the log-quadratic form ``-0.5 xᵀ M x + vᵀ x + c`` at ``x``."""
+    return -0.5 * jnp.dot(x, jnp.dot(M, x)) + v @ x + c
+
+
 class Gaussian(NamedTuple):
     mean: Array
     cov: Array
@@ -76,7 +81,7 @@ class LogMessage(NamedTuple):
     xi: Array
 
     def predict(self, x: Array) -> Array:
-        return -0.5 * jnp.dot(x, jnp.dot(self.S, x)) + self.s @ x + self.xi
+        return quad_predict(self.S, self.s, self.xi, x)
 
 
 class LogMarginalNorm(NamedTuple):
@@ -85,7 +90,7 @@ class LogMarginalNorm(NamedTuple):
     eta: Array
 
     def predict(self, x: Array) -> Array:
-        return -0.5 * jnp.dot(x, jnp.dot(self.U, x)) + self.u @ x + self.eta
+        return quad_predict(self.U, self.u, self.eta, x)
 
 
 class ValueFn(NamedTuple):
@@ -94,7 +99,7 @@ class ValueFn(NamedTuple):
     rho: Array
 
     def predict(self, x: Array) -> Array:
-        return -0.5 * jnp.dot(x, jnp.dot(self.R, x)) + self.r @ x + self.rho
+        return quad_predict(self.R, self.r, self.rho, x)
 
 
 class LogPrior(NamedTuple):
@@ -119,5 +124,5 @@ class LogObservation(NamedTuple):
     nu: Array
 
     def predict(self, x: Array) -> Array:
-        return -0.5 * jnp.dot(x, jnp.dot(self.L, x)) + self.l @ x + self.nu
+        return quad_predict(self.L, self.l, self.nu, x)
 
