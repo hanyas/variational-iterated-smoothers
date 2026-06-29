@@ -1,18 +1,16 @@
-from typing import Callable
 from functools import partial
+from typing import Callable
 
 import jax
 from jax import Array
 from jax import numpy as jnp
 from jax import scipy as jsc
 
-from varsmooth.objects import (
-    Gaussian,
-    AdditiveGaussianModel,
-    LogPrior,
-    LogTransition,
-    LogObservation,
-)
+from varsmooth.objects import AdditiveGaussianModel
+from varsmooth.objects import Gaussian
+from varsmooth.objects import LogObservation
+from varsmooth.objects import LogPrior
+from varsmooth.objects import LogTransition
 from varsmooth.utils import logdet
 
 
@@ -25,19 +23,12 @@ def get_log_prior(
     return LogPrior(
         L=jsc.linalg.inv(Lambda),
         l=jsc.linalg.solve(Lambda, mu),
-        nu=(
-            - 0.5 * logdet(2 * jnp.pi * Lambda)
-            - 0.5 * mu.T @ jsc.linalg.solve(Lambda, mu)
-        )
+        nu=(-0.5 * logdet(2 * jnp.pi * Lambda) - 0.5 * mu.T @ jsc.linalg.solve(Lambda, mu)),
     )
 
 
 @partial(jax.vmap, in_axes=(None, 0, None))
-def get_log_transition(
-    f: AdditiveGaussianModel,
-    q: Gaussian,
-    method: Callable
-) -> LogTransition:
+def get_log_transition(f: AdditiveGaussianModel, q: Gaussian, method: Callable) -> LogTransition:
 
     A, b, Omega = method(f, q)
     return LogTransition(
@@ -47,27 +38,16 @@ def get_log_transition(
         C22=A.T @ jsc.linalg.solve(Omega, A),
         c1=jsc.linalg.solve(Omega, b),
         c2=-A.T @ jsc.linalg.solve(Omega, b),
-        kappa=(
-            - 0.5 * logdet(2 * jnp.pi * Omega)
-            - 0.5 * b.T @ jsc.linalg.solve(Omega, b)
-        ),
+        kappa=(-0.5 * logdet(2 * jnp.pi * Omega) - 0.5 * b.T @ jsc.linalg.solve(Omega, b)),
     )
 
 
 @partial(jax.vmap, in_axes=(0, None, 0, None))
-def get_log_observation(
-    y: Array,
-    h: AdditiveGaussianModel,
-    q: Gaussian,
-    method: Callable
-) -> LogObservation:
+def get_log_observation(y: Array, h: AdditiveGaussianModel, q: Gaussian, method: Callable) -> LogObservation:
 
     H, e, Delta = method(h, q)
     return LogObservation(
         L=H.T @ jsc.linalg.solve(Delta, H),
         l=H.T @ jsc.linalg.solve(Delta, y - e),
-        nu=(
-            - 0.5 * logdet(2 * jnp.pi * Delta)
-            - 0.5 * (y - e).T @ jsc.linalg.solve(Delta, y - e)
-        )
+        nu=(-0.5 * logdet(2 * jnp.pi * Delta) - 0.5 * (y - e).T @ jsc.linalg.solve(Delta, y - e)),
     )
