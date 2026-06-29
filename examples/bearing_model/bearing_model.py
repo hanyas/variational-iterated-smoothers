@@ -1,11 +1,9 @@
+from jax import jit
+from jax import lax
 import jax.numpy as jnp
-from jax import lax, jit
-
+from jax.tree_util import Partial
 import numpy as np
 import scipy.linalg as linalg
-
-from jax.tree_util import Partial
-
 
 __all__ = ["make_parameters", "get_data"]
 
@@ -36,9 +34,7 @@ def _transition_function(x, dt):
         coswto = coswt - 1
         return coswt, coswto / w, sinwt, sinwt / w
 
-    coswt, coswtopw, sinwt, sinwtpw = lax.cond(
-        predicate, true_fun, false_fun, None
-    )
+    coswt, coswtopw, sinwt, sinwtpw = lax.cond(predicate, true_fun, false_fun, None)
 
     F = jnp.array(
         [
@@ -79,9 +75,7 @@ def _transition_function_dx(x, dt):
         dcoswtopw = (-w * dt * sinwt - coswto) / (w**2)
         return coswt, coswto, coswtopw, sinwt, sinwtpw, dsinwtpw, dcoswtopw
 
-    coswt, coswto, coswtopw, sinwt, sinwtpw, dsinwtpw, dcoswtopw = lax.cond(
-        predicate, true_fun, false_fun, None
-    )
+    coswt, coswto, coswtopw, sinwt, sinwtpw, dsinwtpw, dcoswtopw = lax.cond(predicate, true_fun, false_fun, None)
 
     df = jnp.array(
         [
