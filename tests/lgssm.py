@@ -1,3 +1,4 @@
+from jax import Array
 import jax.numpy as jnp
 import numpy as np
 
@@ -11,10 +12,14 @@ def observation_fn(x, H):
 
 
 def simulate(
-    x0,
-    A, b, Omega,
-    H, e, Delta,
-    nb_steps,
+    x0: Array,
+    A: Array,
+    b: Array,
+    Omega: Array,
+    H: Array,
+    e: Array,
+    Delta: Array,
+    nb_steps: int,
     random_state=None,
 ):
     if random_state is None or isinstance(random_state, int):

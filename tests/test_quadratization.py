@@ -1,17 +1,14 @@
-import pytest
-
 import jax
 import jax.numpy as jnp
-
 import numpy as np
+import pytest
 import scipy as sc
 
-from varsmooth.utils import logdet
-from varsmooth.objects import Gaussian
-from varsmooth.objects import AdditiveGaussianModel
-from varsmooth.approximation import gauss_hermite_quadratization as gauss_hermite
-
 from tests.test_utils import generate_system
+from varsmooth.approximation import gauss_hermite_quadratization as gauss_hermite
+from varsmooth.objects import AdditiveGaussianModel
+from varsmooth.objects import Gaussian
+from varsmooth.utils import logdet
 
 QUADRATIZATION_METHODS = [gauss_hermite]
 
@@ -23,7 +20,7 @@ def config():
 
 
 def quadratic_fn(x, A, b, c):
-    return - 0.5 * x.T @ A @ x + jnp.dot(x, b) + c
+    return -0.5 * x.T @ A @ x + jnp.dot(x, b) + c
 
 
 @pytest.mark.parametrize("dim_x", [1, 2, 3, 5])
@@ -59,10 +56,7 @@ def test_log_observation_additive(dim_y, dim_x, seed, method):
 
     np.random.seed(seed)
     _, H, e, Delta, _ = generate_system(dim_x, dim_y)
-    h = AdditiveGaussianModel(
-        lambda x: H @ x + e,
-        Gaussian(np.zeros((dim_y, )), Delta)
-    )
+    h = AdditiveGaussianModel(lambda x: H @ x + e, Gaussian(np.zeros((dim_y,)), Delta))
 
     y = np.random.randn(dim_y)
     logpdf = lambda x: h.log_prob(y, x)
@@ -76,10 +70,7 @@ def test_log_observation_additive(dim_y, dim_x, seed, method):
 
     L = H.T @ sc.linalg.solve(Delta, H)
     l = H.T @ sc.linalg.solve(Delta, y - e)
-    nu = (
-        - 0.5 * logdet(2 * jnp.pi * Delta)
-        - 0.5 * (y - e).T @ sc.linalg.solve(Delta, y - e)
-    )
+    nu = -0.5 * logdet(2 * jnp.pi * Delta) - 0.5 * (y - e).T @ sc.linalg.solve(Delta, y - e)
 
     np.testing.assert_allclose(L, L_approx, rtol=1e-4, atol=1e-4)
     np.testing.assert_allclose(l, l_approx, rtol=1e-4, atol=1e-4)
@@ -93,10 +84,7 @@ def test_log_transition_additive(dim_x, seed, method):
 
     np.random.seed(seed)
     _, A, b, Omega, _ = generate_system(dim_x, dim_x)
-    f = AdditiveGaussianModel(
-        lambda x: A @ x + b,
-        Gaussian(np.zeros((dim_x, )), Omega)
-    )
+    f = AdditiveGaussianModel(lambda x: A @ x + b, Gaussian(np.zeros((dim_x,)), Omega))
 
     m_x = np.random.randn(int(2 * dim_x))
     chol_x = np.random.rand(int(2 * dim_x), int(2 * dim_x))
@@ -119,10 +107,7 @@ def test_log_transition_additive(dim_x, seed, method):
     C22 = A.T @ sc.linalg.solve(Omega, A)
     c1 = sc.linalg.solve(Omega, b)
     c2 = -A.T @ sc.linalg.solve(Omega, b)
-    kappa = (
-        - 0.5 * logdet(2 * jnp.pi * Omega)
-        - 0.5 * b.T @ sc.linalg.solve(Omega, b)
-    )
+    kappa = -0.5 * logdet(2 * jnp.pi * Omega) - 0.5 * b.T @ sc.linalg.solve(Omega, b)
 
     np.testing.assert_allclose(C11, C11_approx, rtol=1e-4, atol=1e-4)
     np.testing.assert_allclose(C12, C12_approx, rtol=1e-4, atol=1e-4)

@@ -1,11 +1,12 @@
 import jax
-
 from jax import Array
 from jax import numpy as jnp
 from jax import scipy as jsc
 
-from varsmooth.objects import Gaussian, AffineGaussian
-from varsmooth.utils import none_or_concat, none_or_shift
+from varsmooth.objects import AffineGaussian
+from varsmooth.objects import Gaussian
+from varsmooth.utils import none_or_concat
+from varsmooth.utils import none_or_shift
 
 
 def filtering(
@@ -39,11 +40,7 @@ def filtering(
         qf = _update(H, e, Delta, qp, y)
         return qf, qf
 
-    _, filter_marginals = jax.lax.scan(
-        body,
-        prior_dist,
-        (observations, linear_transition, linear_observation)
-    )
+    _, filter_marginals = jax.lax.scan(body, prior_dist, (observations, linear_transition, linear_observation))
     return none_or_concat(filter_marginals, prior_dist, 1)
 
 
@@ -72,12 +69,7 @@ def smoothing(
     last_marginal = jax.tree.map(lambda z: z[-1], filter_trajectory)
     rest_marginals = none_or_shift(filter_trajectory, -1)
 
-    _, smoothed_marginals = jax.lax.scan(
-        body,
-        last_marginal,
-        (rest_marginals, linear_transition),
-        reverse=True
-    )
+    _, smoothed_marginals = jax.lax.scan(body, last_marginal, (rest_marginals, linear_transition), reverse=True)
     return none_or_concat(smoothed_marginals, last_marginal, -1)
 
 

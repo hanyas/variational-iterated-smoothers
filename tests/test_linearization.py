@@ -1,19 +1,17 @@
-import pytest
-
 from functools import partial
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
-from varsmooth.objects import Gaussian
+from varsmooth.approximation import cubature_linearization as cubature
+from varsmooth.approximation import extended_linearization as extended
+from varsmooth.approximation import gauss_hermite_linearization as gauss_hermite
+from varsmooth.approximation import unscented_linearization as unscented
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import ConditionalMomentsModel
-
-from varsmooth.approximation import extended_linearization as extended
-from varsmooth.approximation import unscented_linearization as unscented
-from varsmooth.approximation import cubature_linearization as cubature
-from varsmooth.approximation import gauss_hermite_linearization as gauss_hermite
+from varsmooth.objects import Gaussian
 
 LINEARIZATION_METHODS = [extended, unscented, cubature, gauss_hermite]
 
@@ -41,7 +39,7 @@ def transition_mean(x):
 
 
 def transition_cov(x):
-    return jnp.array([[0.3 ** 2]])
+    return jnp.array([[0.3**2]])
 
 
 def observation_mean(x, gamma):
