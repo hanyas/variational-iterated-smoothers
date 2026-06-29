@@ -52,6 +52,47 @@ def statistical_expansion(
     return log_prior, log_transition, log_observation
 
 
+def free_energy(
+    log_prior: LogPrior,
+    log_transition: LogTransition,
+    log_observation: LogObservation,
+    marginals: Gaussian,
+    kernels: AffineGaussian,
+):
+    m, P = marginals.mean, marginals.cov
+    F, _, Sigma = kernels
+
+    def _expected_quadratic(M, v, c, mk, Pk):
+        # E_{N(mk, Pk)}[ -0.5 x^T M x + v^T x + c ]
+        return -0.5 * (mk @ M @ mk + jnp.trace(M @ Pk)) + v @ mk + c
+
+    def _entropy(cov):
+        return 0.5 * (cov.shape[0] * (jnp.log(2.0 * jnp.pi) + 1.0) + jnp.linalg.slogdet(cov)[1])
+
+    # prior:  E_{q(x_0)}[log p(x_0)]
+    prior_term = _expected_quadratic(log_prior.L, log_prior.l, log_prior.nu, m[0], P[0])
+
+    # observations:  sum_k E_{q(x_k)}[log p(y_k | x_k)]
+    obs_terms = jax.vmap(lambda lo, mk, Pk: _expected_quadratic(lo.L, lo.l, lo.nu, mk, Pk))(
+        log_observation, m[1:], P[1:]
+    )
+
+    # transitions:  sum_k E_{q(x_k, x_{k+1})}[log p(x_{k+1} | x_k)]  over the twin marginal
+    def _transition_term(lt, mk, Pk, Fk, mk1, Pk1):
+        cross = Fk @ Pk  # Cov(x_{k+1}, x_k)
+        joint_precision = jnp.block([[lt.C11, -lt.C12], [-lt.C21, lt.C22]])
+        mean = jnp.concatenate([mk1, mk])  # z = [x_{k+1}, x_k]
+        cov = jnp.block([[Pk1, cross], [cross.T, Pk]])
+        linear = jnp.concatenate([lt.c1, lt.c2])
+        return -0.5 * (mean @ joint_precision @ mean + jnp.trace(joint_precision @ cov)) + linear @ mean + lt.kappa
+
+    trans_terms = jax.vmap(_transition_term)(log_transition, m[:-1], P[:-1], F, m[1:], P[1:])
+
+    # entropy of the chain:  H(x_0) + sum_k H(x_{k+1} | x_k)
+    entropy = _entropy(P[0]) + jnp.sum(jax.vmap(_entropy)(Sigma))
+    return prior_term + jnp.sum(obs_terms) + jnp.sum(trans_terms) + entropy
+
+
 def std_forward_message(posterior: GaussMarkov) -> Gaussian:
     """Marginals of a forward Gauss-Markov chain (root marginal + forward kernels)."""
     init_marginal, kernels = posterior
@@ -131,15 +172,16 @@ def get_conditional(marginal: Gaussian, pairwise: Gaussian):
     )
 
 
-def get_reverse_kernel(marginal: Gaussian, kernel: AffineGaussian, next_marginal: Gaussian):
+def get_reverse_kernel(
+    marginal: Gaussian,
+    kernel: AffineGaussian,
+    next_marginal: Gaussian,
+):
     pairwise = get_pairwise_marginal(marginal, kernel)
     return get_conditional(next_marginal, pairwise)
 
 
-def merge_messages(
-    fwd_message: ValueFn,
-    bwd_message: LogMessage,
-) -> ValueFn:
+def merge_messages(fwd_message: ValueFn, bwd_message: LogMessage) -> ValueFn:
     return ValueFn(
         R=(fwd_message.R + bwd_message.S),
         r=(fwd_message.r + bwd_message.s),

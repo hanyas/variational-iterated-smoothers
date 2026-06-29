@@ -93,7 +93,9 @@ def log_backward_message(
     last_value_fn = ValueFn(R=last_log_obs.L, r=last_log_obs.l, rho=last_log_obs.nu)
 
     log_aux_obs = none_or_concat(
-        none_or_shift(log_observation, -1), LogObservation(log_prior.L, log_prior.l, log_prior.nu), 1
+        none_or_shift(log_observation, -1),
+        LogObservation(log_prior.L, log_prior.l, log_prior.nu),
+        1,
     )
 
     nominal_marginal, nominal_kernels = nominal_posterior

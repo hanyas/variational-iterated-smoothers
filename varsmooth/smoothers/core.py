@@ -3,66 +3,26 @@ from functools import partial
 import jax
 from jax import numpy as jnp
 
+from varsmooth.smoothers.utils import free_energy
 from varsmooth.smoothers.utils import line_search
 from varsmooth.smoothers.utils import statistical_expansion
 from varsmooth.utils import bounded_while_loop
-
-
-def free_energy(log_prior, log_transition, log_observation, marginals, kernels):
-    """Variational free energy (ELBO)
-
-    Args:
-        log_prior: ``LogPrior`` over x_0.
-        log_transition: ``LogTransition`` over the joint (x_{k+1}, x_k), stacked over k.
-        log_observation: ``LogObservation`` over x_{k+1}, stacked over k.
-        marginals: Gaussian marginals N(m_k, P_k), k = 0..T.
-        kernels: forward ``AffineGaussian`` kernels q(x_{k+1}|x_k), k = 0..T-1.
-    """
-    m, P = marginals.mean, marginals.cov
-    F, _, Sigma = kernels
-
-    def _expected_quadratic(M, v, c, mk, Pk):
-        # E_{N(mk, Pk)}[ -0.5 x^T M x + v^T x + c ]
-        return -0.5 * (mk @ M @ mk + jnp.trace(M @ Pk)) + v @ mk + c
-
-    def _entropy(cov):
-        return 0.5 * (cov.shape[0] * (jnp.log(2.0 * jnp.pi) + 1.0) + jnp.linalg.slogdet(cov)[1])
-
-    # prior:  E_{q(x_0)}[log p(x_0)]
-    prior_term = _expected_quadratic(log_prior.L, log_prior.l, log_prior.nu, m[0], P[0])
-
-    # observations:  sum_k E_{q(x_k)}[log p(y_k | x_k)]
-    obs_terms = jax.vmap(lambda lo, mk, Pk: _expected_quadratic(lo.L, lo.l, lo.nu, mk, Pk))(
-        log_observation, m[1:], P[1:]
-    )
-
-    # transitions:  sum_k E_{q(x_k, x_{k+1})}[log p(x_{k+1} | x_k)]  over the twin marginal
-    def _transition_term(lt, mk, Pk, Fk, mk1, Pk1):
-        cross = Fk @ Pk  # Cov(x_{k+1}, x_k)
-        joint_precision = jnp.block([[lt.C11, -lt.C12], [-lt.C21, lt.C22]])
-        mean = jnp.concatenate([mk1, mk])  # z = [x_{k+1}, x_k]
-        cov = jnp.block([[Pk1, cross], [cross.T, Pk]])
-        linear = jnp.concatenate([lt.c1, lt.c2])
-        return -0.5 * (mean @ joint_precision @ mean + jnp.trace(joint_precision @ cov)) + linear @ mean + lt.kappa
-
-    trans_terms = jax.vmap(_transition_term)(log_transition, m[:-1], P[:-1], F, m[1:], P[1:])
-
-    # entropy of the chain:  H(x_0) + sum_k H(x_{k+1} | x_k)
-    entropy = _entropy(P[0]) + jnp.sum(jax.vmap(_entropy)(Sigma))
-    return prior_term + jnp.sum(obs_terms) + jnp.sum(trans_terms) + entropy
 
 
 def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
     """Build a direction's smoother suite from its message-passing primitives.
 
     Args:
-        log_message_fn: ``log_forward_message`` (reverse smoother) or
+        log_message_fn:
+            ``log_forward_message`` (reverse smoother) or
             ``log_backward_message`` (forward smoother). Maps
             ``(log_prior, log_transition, log_observation, reference, damping)``
             to ``(posterior, log_marg_norm, value_fns, log_msgs, feasible)``.
-        std_marginal_fn: ``std_backward_message`` (reverse) or
+        std_marginal_fn:
+            ``std_backward_message`` (reverse) or
             ``std_forward_message`` (forward); marginals of a Gauss-Markov chain.
-        kl_fn: ``kl_between_reverse_gauss_markovs`` (reverse) or
+        kl_fn:
+            ``kl_between_reverse_gauss_markovs`` (reverse) or
             ``kl_between_forward_gauss_markovs`` (forward).
 
     Returns:

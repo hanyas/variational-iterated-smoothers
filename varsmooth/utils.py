@@ -36,15 +36,15 @@ def none_or_concat(x, y, position=1):
 def bounded_while_loop(cond_fun, body_fun, init_val, maxiter):
     """``jax.lax.while_loop`` with an iteration cap.
 
-    Iterates ``body_fun`` while ``cond_fun(val)`` holds, stopping after at most
-    ``maxiter`` steps. Drop-in replacement for the previously used (and now
-    archived) ``jaxopt._src.loop.while_loop`` with ``jit=True``.
-
     Args:
-        cond_fun: predicate ``val -> bool`` controlling continuation.
-        body_fun: update ``val -> val`` applied each iteration.
-        init_val: initial loop-carried value (any pytree).
-        maxiter: maximum number of iterations (static int).
+        cond_fun:
+            predicate ``val -> bool`` controlling continuation.
+        body_fun:
+            update ``val -> val`` applied each iteration.
+        init_val:
+            initial loop-carried value (any pytree).
+        maxiter:
+            maximum number of iterations (static int).
 
     Returns:
         The final loop-carried value.

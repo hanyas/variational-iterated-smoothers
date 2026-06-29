@@ -151,22 +151,27 @@ def iterated_two_filter_smoother(
     """
     Iterated two-filter smoother with early stopping based on temperature.
 
-    This function performs variational inference using both forward and reverse
-    message passing until convergence. The iterations stop when either:
-    1. Maximum iterations are reached, or
-    2. Temperature drops below min_temperature (indicating convergence)
-
     Args:
-        observations: Array of observations
-        log_prior_fn: Function to compute log prior
-        log_transition_fn: Function to compute log transition
-        log_observation_fn: Function to compute log observation likelihood
-        init_forward_posterior: Initial forward posterior estimate
-        init_reverse_posterior: Initial reverse posterior estimate
-        kl_constraint: KL divergence constraint for the optimization
-        init_temperature: Initial temperature for line search
-        min_temperature: Minimum temperature threshold for early stopping
-        max_iterations: Maximum number of iterations
+        observations:
+            Array of observations
+        log_prior_fn:
+            Function to compute log prior
+        log_transition_fn:
+            Function to compute log transition
+        log_observation_fn:
+            Function to compute log observation likelihood
+        init_forward_posterior:
+            Initial forward posterior estimate
+        init_reverse_posterior:
+            Initial reverse posterior estimate
+        kl_constraint:
+            KL divergence constraint for the optimization
+        init_temperature:
+            Initial temperature for line search
+        min_temperature:
+            Minimum temperature threshold for early stopping
+        max_iterations:
+            Maximum number of iterations
 
     Returns:
         Optimal marginals after convergence
