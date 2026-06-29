@@ -66,6 +66,11 @@ class ConditionalMomentsModel(NamedTuple):
     mean_fn: Callable
     cov_fn: Callable
 
+    def log_prob(self, y, x):
+        diff = y - self.mean_fn(x)
+        cov = self.cov_fn(x)
+        return -0.5 * diff.T @ jsc.linalg.solve(cov, diff) - 0.5 * logdet(2 * jnp.pi * cov)
+
 
 class LogMessage(NamedTuple):
     S: Array

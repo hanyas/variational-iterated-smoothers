@@ -11,6 +11,7 @@ from varsmooth.environments.stoch_volatility import get_data
 from varsmooth.environments.stoch_volatility import make_parameters
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import AffineGaussian
+from varsmooth.objects import ConditionalMomentsModel
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.two_filter import iterated_two_filter_smoother
@@ -18,17 +19,6 @@ from varsmooth.smoothers.utils import initialize_reverse_with_forward
 
 jax.config.update("jax_platform_name", "cpu")
 jax.config.update("jax_enable_x64", True)
-
-
-class SVObservation:
-    """y | x ~ N(0, exp(x)), exposed via its log-density for the Fourier-Hermite path."""
-
-    def __init__(self, cov_fn):
-        self.cov_fn = cov_fn
-
-    def log_prob(self, y, x):
-        var = self.cov_fn(x)[0, 0]
-        return -0.5 * jnp.log(2.0 * jnp.pi * var) - 0.5 * jnp.sum(y**2) / var
 
 
 mu = -0.5  # long-run mean log-volatility
@@ -42,13 +32,16 @@ p0 = sigma**2 / (1.0 - phi**2)  # prior variance
 rng = np.random.RandomState(23)
 x0 = mu + np.sqrt(p0) * rng.randn()
 _, true_states, observations = get_data(x0, mu, phi, sigma, nb_steps, random_state=rng)
-transition_cov, cov_fn, transition_fn, _, _, _ = make_parameters(mu, phi, sigma)
+transition_cov, observation_cov, transition_fn, observation_fn, _, _ = make_parameters(mu, phi, sigma)
 
 transition_model = AdditiveGaussianModel(
     fun=transition_fn,
     noise=Gaussian(jnp.zeros((dim_x,)), transition_cov),
 )
-observation_model = SVObservation(cov_fn)
+observation_model = ConditionalMomentsModel(
+    mean_fn=observation_fn,
+    cov_fn=observation_cov,
+)
 prior_dist = Gaussian(
     mean=jnp.array([mu]),
     cov=jnp.array([[p0]]),
