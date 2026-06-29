@@ -4,21 +4,23 @@ import jax
 from jax import numpy as jnp
 from jax import scipy as jsc
 
-from varsmooth.objects import (
-    AffineGaussian,
-    Gaussian,
-    GaussMarkov,
-    LogMarginalNorm,
-    LogMessage,
-    LogObservation,
-    LogPrior,
-    LogTransition,
-    ValueFn,
-)
+from varsmooth.objects import AffineGaussian
+from varsmooth.objects import Gaussian
+from varsmooth.objects import GaussMarkov
+from varsmooth.objects import LogMarginalNorm
+from varsmooth.objects import LogMessage
+from varsmooth.objects import LogObservation
+from varsmooth.objects import LogPrior
+from varsmooth.objects import LogTransition
+from varsmooth.objects import ValueFn
 from varsmooth.smoothers.core import make_smoother_suite
-from varsmooth.smoothers.utils import std_forward_message  # re-exported for back-compat
 from varsmooth.smoothers.utils import kl_between_forward_gauss_markovs
-from varsmooth.utils import logdet, none_or_concat, none_or_idx, none_or_shift, symmetrize
+from varsmooth.smoothers.utils import std_forward_message
+from varsmooth.utils import logdet
+from varsmooth.utils import none_or_concat
+from varsmooth.utils import none_or_idx
+from varsmooth.utils import none_or_shift
+from varsmooth.utils import symmetrize
 
 
 def log_backward_message(
@@ -156,9 +158,8 @@ def log_backward_message(
 (
     forward_markov_smoother,
     dual_objective,
-    vanilla_objective,
+    log_evidence,
     iterated_forward_markov_smoother,
-    undamped_iterated_forward_markov_smoother,
 ) = make_smoother_suite(
     log_message_fn=log_backward_message,
     std_marginal_fn=std_forward_message,
