@@ -1,14 +1,14 @@
-from bearing_model import get_data
-from bearing_model import make_parameters
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from varsmooth.approximation import gauss_hermite_linearization as linearize
-from varsmooth.approximation.linearization import get_log_observation
-from varsmooth.approximation.linearization import get_log_prior
-from varsmooth.approximation.linearization import get_log_transition
+from varsmooth.approximation import gauss_hermite_quadratization as quadratize
+from varsmooth.approximation.fourier_hermite import get_log_observation
+from varsmooth.approximation.fourier_hermite import get_log_prior
+from varsmooth.approximation.fourier_hermite import get_log_transition
+from varsmooth.environments.bearing_only import get_data
+from varsmooth.environments.bearing_only import make_parameters
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
@@ -34,7 +34,7 @@ qw = 0.1  # discretization noise
 nb_steps = 100  # number of observations
 dim_x, dim_y = 5, 2
 
-_, true_states, observations = get_data(x0, dt, r, nb_steps, s1, s2, random_state=1)
+_, true_states, observations = get_data(x0, dt, r, nb_steps, s1, s2, random_state=42)
 transition_cov, observation_cov, transition_fn, observation_fn, _, _ = make_parameters(qc, qw, r, dt, s1, s2)
 
 transition_model = AdditiveGaussianModel(
@@ -66,9 +66,9 @@ forward_marginals = std_forward_message(forward_markov)
 
 init_posterior = initialize_reverse_with_forward(forward_markov)
 
-log_prior_fn = lambda q: get_log_prior(prior_dist, q, linearize)
-log_transition_fn = lambda q, _: get_log_transition(transition_model, q, linearize)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, linearize)
+log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
+log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
 
 reverse_markov = iterated_reverse_markov_smoother(
     observations=jnp.array(observations),
@@ -78,7 +78,6 @@ reverse_markov = iterated_reverse_markov_smoother(
     init_posterior=init_posterior,
     kl_constraint=100,
     init_temperature=1e6,
-    max_iterations=50,
 )
 marginals = std_backward_message(reverse_markov)
 

@@ -2,12 +2,13 @@ import jax
 import numpy as np
 
 from tests.kalman import rts_smoother
-from tests.lgssm import simulate
-from tests.test_utils import generate_system
-from varsmooth.approximation import gauss_hermite_linearization as linearize
-from varsmooth.approximation.linearization import get_log_observation
-from varsmooth.approximation.linearization import get_log_prior
-from varsmooth.approximation.linearization import get_log_transition
+from varsmooth.approximation import gauss_hermite_quadratization as quadratize
+from varsmooth.approximation.fourier_hermite import get_log_observation
+from varsmooth.approximation.fourier_hermite import get_log_prior
+from varsmooth.approximation.fourier_hermite import get_log_transition
+from varsmooth.environments.linear_gaussian import get_data
+from varsmooth.environments.linear_gaussian import make_parameters
+from varsmooth.environments.linear_gaussian import make_random_system
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
@@ -23,17 +24,17 @@ jax.config.update("jax_platform_name", "cpu")
 np.random.seed(0)
 
 dim_x, dim_y = 3, 2
-nb_steps = 100
+nb_steps = 25
 
-prior_dist, A, b, Omega, _ = generate_system(dim_x, dim_x)
+mu0, P0, A, b, Omega, H, e, Delta = make_random_system(dim_x, dim_y, random_state=0)
+prior_dist = Gaussian(mu0, P0)
+_, _, transition_function, observation_function, _, _ = make_parameters(A, b, Omega, H, e, Delta)
 transition_model = AdditiveGaussianModel(
-    fun=lambda x: A @ x + b,
+    fun=transition_function,
     noise=Gaussian(np.zeros((dim_x,)), Omega),
 )
-
-_, H, e, Delta, _ = generate_system(dim_x, dim_y)
 observation_model = AdditiveGaussianModel(
-    fun=lambda x: H @ x + e,
+    fun=observation_function,
     noise=Gaussian(np.zeros((dim_y,)), Delta),
 )
 
@@ -48,7 +49,7 @@ _observation_model = AffineGaussian(
     np.repeat([Delta], nb_steps, axis=0),
 )
 
-xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps, random_state=13)
+_, xs, ys = get_data(mu0, A, b, Omega, H, e, Delta, nb_steps, random_state=1)
 rts_marginals = rts_smoother(
     observations=ys,
     prior_dist=prior_dist,
@@ -58,10 +59,13 @@ rts_marginals = rts_smoother(
 
 F = 1e-1 * np.eye(dim_x)
 d = np.zeros((dim_x,))
-Sigma = 1.0 * np.eye(dim_x)
+Sigma = 10.0 * np.eye(dim_x)
 
 init_posterior = GaussMarkov(
-    marginal=Gaussian(mean=np.random.randn(prior_dist.mean.shape[0]), cov=np.eye(prior_dist.mean.shape[0])),
+    marginal=Gaussian(
+        mean=np.random.randn(dim_x),
+        cov=np.eye(dim_x),
+    ),
     kernels=AffineGaussian(
         F=np.repeat([F], nb_steps, axis=0),
         d=np.repeat([d], nb_steps, axis=0),
@@ -69,9 +73,9 @@ init_posterior = GaussMarkov(
     ),
 )
 
-log_prior_fn = lambda q: get_log_prior(prior_dist, q, linearize)
-log_transition_fn = lambda q, _: get_log_transition(transition_model, q, linearize)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, linearize)
+log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
+log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
 
 # single iteration no damping
 forward_markov = forward_markov_smoother(
@@ -111,7 +115,7 @@ forward_markov = iterated_forward_markov_smoother(
     log_transition_fn=log_transition_fn,
     log_observation_fn=log_observation_fn,
     init_posterior=init_posterior,
-    kl_constraint=100,
+    kl_constraint=1000,
     init_temperature=1e6,
 )
 var_marginals = std_forward_message(forward_markov)

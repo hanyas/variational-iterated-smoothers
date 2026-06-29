@@ -1,5 +1,3 @@
-from bearing_model import get_data
-from bearing_model import make_parameters
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -9,6 +7,8 @@ from varsmooth.approximation import gauss_hermite_quadratization as quadratize
 from varsmooth.approximation.fourier_hermite import get_log_observation
 from varsmooth.approximation.fourier_hermite import get_log_prior
 from varsmooth.approximation.fourier_hermite import get_log_transition
+from varsmooth.environments.bearing_only import get_data
+from varsmooth.environments.bearing_only import make_parameters
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
