@@ -28,13 +28,9 @@ def none_or_concat(x, y, position=1):
     if x is None or y is None:
         return None
     if position == 1:
-        return jax.tree.map(
-            lambda a, b: jnp.concatenate([a[None, ...], b]), y, x
-        )
+        return jax.tree.map(lambda a, b: jnp.concatenate([a[None, ...], b]), y, x)
     else:
-        return jax.tree.map(
-            lambda a, b: jnp.concatenate([b, a[None, ...]]), y, x
-        )
+        return jax.tree.map(lambda a, b: jnp.concatenate([b, a[None, ...]]), y, x)
 
 
 def bounded_while_loop(cond_fun, body_fun, init_val, maxiter):
@@ -53,6 +49,7 @@ def bounded_while_loop(cond_fun, body_fun, init_val, maxiter):
     Returns:
         The final loop-carried value.
     """
+
     def _cond(carry):
         it, val = carry
         return jnp.logical_and(it < maxiter, cond_fun(val))

@@ -3,7 +3,6 @@ from typing import NamedTuple
 import jax
 from jax import Array
 import jax.numpy as jnp
-
 from jax.scipy.linalg import cho_solve
 
 from varsmooth.objects import Gaussian
@@ -70,7 +69,7 @@ def quadratize_any(f, q, get_sigma_points):
 
     Hs = jax.vmap(H_fn)(x_pts.points)
     E_H = jnp.einsum("n,nkh->kh", x_pts.wm, Hs)
-    Fxx = - E_H
+    Fxx = -E_H
 
     Js = jax.vmap(J_fn)(x_pts.points)
     E_J = jnp.einsum("n,nk->k", x_pts.wm, Js)
@@ -78,10 +77,5 @@ def quadratize_any(f, q, get_sigma_points):
 
     fs = jax.vmap(f)(x_pts.points)
     E_f = jnp.dot(x_pts.wm, fs)
-    f0 = (
-        E_f
-        - jnp.dot(E_J, m_x)
-        + 0.5 * m_x.T @ E_H @ m_x
-        - 0.5 * jnp.trace(E_H @ (chol_x @ chol_x.T))
-    )
+    f0 = E_f - jnp.dot(E_J, m_x) + 0.5 * m_x.T @ E_H @ m_x - 0.5 * jnp.trace(E_H @ (chol_x @ chol_x.T))
     return Fxx, Fx, f0

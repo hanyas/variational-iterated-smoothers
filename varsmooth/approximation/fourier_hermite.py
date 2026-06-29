@@ -1,18 +1,16 @@
-from typing import Callable
 from functools import partial
+from typing import Callable
 
 import jax
 from jax import Array
 from jax import numpy as jnp
 
-from varsmooth.objects import (
-    Gaussian,
-    GaussMarkov,
-    AdditiveGaussianModel,
-    LogPrior,
-    LogTransition,
-    LogObservation,
-)
+from varsmooth.objects import AdditiveGaussianModel
+from varsmooth.objects import Gaussian
+from varsmooth.objects import GaussMarkov
+from varsmooth.objects import LogObservation
+from varsmooth.objects import LogPrior
+from varsmooth.objects import LogTransition
 
 
 def get_log_prior(
@@ -26,10 +24,7 @@ def get_log_prior(
 
 @partial(jax.vmap, in_axes=(None, 0, 0, None))
 def get_log_transition(
-    f: AdditiveGaussianModel,
-    marginal: Gaussian,
-    kernel: GaussMarkov,
-    method: Callable
+    f: AdditiveGaussianModel, marginal: Gaussian, kernel: GaussMarkov, method: Callable
 ) -> LogTransition:
 
     dim = marginal.mean.shape[0]
@@ -39,10 +34,7 @@ def get_log_transition(
 
     q = Gaussian(
         mean=jnp.hstack((F @ m + d, m)),
-        cov=jnp.vstack((
-            jnp.hstack((F @ P @ F.T + Sigma, F @ P)),
-            jnp.hstack((P.T @ F.T, P))
-        ))
+        cov=jnp.vstack((jnp.hstack((F @ P @ F.T + Sigma, F @ P)), jnp.hstack((P.T @ F.T, P)))),
     )
 
     logpdf = lambda z: f.log_prob(z[:dim], z[dim:])
@@ -54,17 +46,12 @@ def get_log_transition(
         C22=C[dim:, dim:],
         c1=c[:dim],
         c2=c[dim:],
-        kappa=kappa
+        kappa=kappa,
     )
 
 
 @partial(jax.vmap, in_axes=(0, None, 0, None))
-def get_log_observation(
-    y: Array,
-    h: AdditiveGaussianModel,
-    q: Gaussian,
-    method: Callable
-) -> LogObservation:
+def get_log_observation(y: Array, h: AdditiveGaussianModel, q: Gaussian, method: Callable) -> LogObservation:
 
     logpdf = lambda x: h.log_prob(y, x)
     L, l, nu = method(logpdf, q)

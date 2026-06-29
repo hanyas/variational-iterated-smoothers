@@ -1,10 +1,15 @@
 from typing import Callable, Tuple, Union
 
-import jax.numpy as jnp
 from jax import Array
+import jax.numpy as jnp
 
-from varsmooth.approximation.sigma_points import SigmaPoints, linearize_additive, linearize_conditional, quadratize_any
-from varsmooth.objects import AdditiveGaussianModel, ConditionalMomentsModel, Gaussian
+from varsmooth.approximation.sigma_points import SigmaPoints
+from varsmooth.approximation.sigma_points import linearize_additive
+from varsmooth.approximation.sigma_points import linearize_conditional
+from varsmooth.approximation.sigma_points import quadratize_any
+from varsmooth.objects import AdditiveGaussianModel
+from varsmooth.objects import ConditionalMomentsModel
+from varsmooth.objects import Gaussian
 
 
 def quadratize(

@@ -1,16 +1,15 @@
-from typing import Tuple, Optional, Union, Callable
+from typing import Callable, Optional, Tuple, Union
 
-import jax.numpy as jnp
 from jax import Array
-
-from varsmooth.objects import Gaussian
-from varsmooth.objects import AdditiveGaussianModel
-from varsmooth.objects import ConditionalMomentsModel
+import jax.numpy as jnp
 
 from varsmooth.approximation.sigma_points import SigmaPoints
 from varsmooth.approximation.sigma_points import linearize_additive
 from varsmooth.approximation.sigma_points import linearize_conditional
 from varsmooth.approximation.sigma_points import quadratize_any
+from varsmooth.objects import AdditiveGaussianModel
+from varsmooth.objects import ConditionalMomentsModel
+from varsmooth.objects import Gaussian
 
 
 def quadratize(
@@ -20,8 +19,7 @@ def quadratize(
     beta: float = 0.0,
     kappa: float = None,
 ):
-    _get_sigma_points = \
-        lambda m, chol_P: get_sigma_points(m, chol_P, alpha, beta, kappa)
+    _get_sigma_points = lambda m, chol_P: get_sigma_points(m, chol_P, alpha, beta, kappa)
     return quadratize_any(fun, q, _get_sigma_points)
 
 
@@ -32,8 +30,7 @@ def linearize(
     beta: float = 0.0,
     kappa: float = None,
 ):
-    _get_sigma_points = \
-        lambda m, chol_P: get_sigma_points(m, chol_P, alpha, beta, kappa)
+    _get_sigma_points = lambda m, chol_P: get_sigma_points(m, chol_P, alpha, beta, kappa)
 
     if isinstance(model, AdditiveGaussianModel):
         fun, noise = model
@@ -45,13 +42,7 @@ def linearize(
         raise NotImplementedError
 
 
-def get_sigma_points(
-    m: Array,
-    chol_P: Array,
-    alpha: float,
-    beta: float,
-    kappa: Optional[float]
-) -> SigmaPoints:
+def get_sigma_points(m: Array, chol_P: Array, alpha: float, beta: float, kappa: Optional[float]) -> SigmaPoints:
 
     nb_dim = m.shape[0]
     if kappa is None:
@@ -62,12 +53,7 @@ def get_sigma_points(
     return SigmaPoints(sigma_points, wm, wc, xi)
 
 
-def _unscented_weights(
-    nb_dim: int,
-    alpha: float,
-    beta: float,
-    kappa: Optional[float]
-) -> Tuple[Array, Array, Array]:
+def _unscented_weights(nb_dim: int, alpha: float, beta: float, kappa: Optional[float]) -> Tuple[Array, Array, Array]:
 
     lamda = alpha**2 * (nb_dim + kappa) - nb_dim
     wm = jnp.full(2 * nb_dim + 1, 1 / (2 * (nb_dim + lamda)))

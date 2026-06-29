@@ -1,36 +1,34 @@
-from typing import Callable, Tuple, NamedTuple
 from functools import partial
+from typing import Callable, NamedTuple, Tuple
 
 import jax
 from jax import Array
 from jax import numpy as jnp
 from jax import scipy as jsc
 
-from varsmooth.objects import (
-    Gaussian,
-    AffineGaussian,
-    GaussMarkov,
-    LogPrior,
-    LogTransition,
-    LogObservation,
-    ValueFn,
-    LogMessage
-)
-from varsmooth.utils import (
-    none_or_idx,
-    none_or_shift,
-    none_or_concat,
-    logdet,
-    bounded_while_loop,
-)
+from varsmooth.objects import AffineGaussian
+from varsmooth.objects import Gaussian
+from varsmooth.objects import GaussMarkov
+from varsmooth.objects import LogMessage
+from varsmooth.objects import LogObservation
+from varsmooth.objects import LogPrior
+from varsmooth.objects import LogTransition
+from varsmooth.objects import ValueFn
+from varsmooth.utils import bounded_while_loop
+from varsmooth.utils import logdet
+from varsmooth.utils import none_or_concat
+from varsmooth.utils import none_or_idx
+from varsmooth.utils import none_or_shift
 
 
 def kl_between_marginals(p, q):
     dim = p.mean.shape[0]
     return 0.5 * (
-        jnp.trace(jsc.linalg.inv(q.cov) @ p.cov) - dim
+        jnp.trace(jsc.linalg.inv(q.cov) @ p.cov)
+        - dim
         + (q.mean - p.mean).T @ jsc.linalg.solve(q.cov, q.mean - p.mean)
-        + logdet(q.cov) - logdet(p.cov)
+        + logdet(q.cov)
+        - logdet(p.cov)
     )
 
 
@@ -41,7 +39,7 @@ def statistical_expansion(
     log_transition_fn: Callable,
     log_observation_fn: Callable,
     posterior_kernels: AffineGaussian,
-    posterior_marginals: Gaussian
+    posterior_marginals: Gaussian,
 ) -> Tuple[LogPrior, LogTransition, LogObservation]:
 
     init_marginal = none_or_idx(posterior_marginals, 0)
@@ -82,16 +80,14 @@ def std_backward_message(posterior: GaussMarkov) -> Gaussian:
     return none_or_concat(marginals, last_marginal, position=-1)
 
 
-def initialize_reverse_with_forward(
-    forward_markov: GaussMarkov
-) -> GaussMarkov:
+def initialize_reverse_with_forward(forward_markov: GaussMarkov) -> GaussMarkov:
     forward_marginals = std_forward_message(forward_markov)
 
     # reverse kernels q(x_k | x_{k+1}) from forward marginals + forward kernels
     kernels = jax.vmap(get_reverse_kernel)(
-        none_or_shift(forward_marginals, -1),   # marginals 0 .. T-1
-        forward_markov.kernels,                 # forward kernels k+1 | k
-        none_or_shift(forward_marginals, 1),    # marginals 1 .. T
+        none_or_shift(forward_marginals, -1),  # marginals 0 .. T-1
+        forward_markov.kernels,  # forward kernels k+1 | k
+        none_or_shift(forward_marginals, 1),  # marginals 1 .. T
     )
 
     return GaussMarkov(
@@ -103,39 +99,24 @@ def initialize_reverse_with_forward(
     )
 
 
-def get_marginal(
-    marginal: Gaussian,
-    kernel: AffineGaussian
-):
+def get_marginal(marginal: Gaussian, kernel: AffineGaussian):
     m, P = marginal
     F, d, Sigma = kernel
-    return Gaussian(
-        mean=F @ m + d,
-        cov=F @ P @ F.T + Sigma
-    )
+    return Gaussian(mean=F @ m + d, cov=F @ P @ F.T + Sigma)
 
 
-def get_pairwise_marginal(
-    marginal: Gaussian,
-    kernel: AffineGaussian
-):
+def get_pairwise_marginal(marginal: Gaussian, kernel: AffineGaussian):
     m, P = marginal
     F, d, Sigma = kernel
 
     q = Gaussian(
         mean=jnp.hstack((F @ m + d, m)),
-        cov=jnp.vstack((
-            jnp.hstack((F @ P @ F.T + Sigma, F @ P)),
-            jnp.hstack((P.T @ F.T, P))
-        ))
+        cov=jnp.vstack((jnp.hstack((F @ P @ F.T + Sigma, F @ P)), jnp.hstack((P.T @ F.T, P)))),
     )
     return q
 
 
-def get_conditional(
-    marginal: Gaussian,
-    pairwise: Gaussian
-):
+def get_conditional(marginal: Gaussian, pairwise: Gaussian):
     dim = marginal.mean.shape[0]
 
     a = pairwise.mean[:dim]
@@ -146,17 +127,11 @@ def get_conditional(
     C = pairwise.cov[:dim, dim:]
 
     return AffineGaussian(
-        F=jsc.linalg.solve(A, C).T,
-        d=b - C.T @ jsc.linalg.solve(A, a),
-        Sigma=B - C.T @ jsc.linalg.solve(A, C)
+        F=jsc.linalg.solve(A, C).T, d=b - C.T @ jsc.linalg.solve(A, a), Sigma=B - C.T @ jsc.linalg.solve(A, C)
     )
 
 
-def get_reverse_kernel(
-    marginal: Gaussian,
-    kernel: AffineGaussian,
-    next_marginal: Gaussian
-):
+def get_reverse_kernel(marginal: Gaussian, kernel: AffineGaussian, next_marginal: Gaussian):
     pairwise = get_pairwise_marginal(marginal, kernel)
     return get_conditional(next_marginal, pairwise)
 
@@ -172,25 +147,15 @@ def merge_messages(
     )
 
 
-def log_to_std_form(
-    potential: ValueFn
-) -> Gaussian:
-    return Gaussian(
-        mean=jsc.linalg.inv(potential.R) @ potential.r,
-        cov=jsc.linalg.inv(potential.R)
-    )
+def log_to_std_form(potential: ValueFn) -> Gaussian:
+    return Gaussian(mean=jsc.linalg.inv(potential.R) @ potential.r, cov=jsc.linalg.inv(potential.R))
 
 
-def std_to_log_form(
-    dist: Gaussian
-) -> ValueFn:
+def std_to_log_form(dist: Gaussian) -> ValueFn:
     return ValueFn(
         R=jsc.linalg.inv(dist.cov),
         r=jsc.linalg.solve(dist.cov, dist.mean),
-        rho=(
-            - 0.5 * logdet(2 * jnp.pi * dist.cov)
-            - 0.5 * dist.mean.T @ jsc.linalg.solve(dist.cov, dist.mean)
-        )
+        rho=(-0.5 * logdet(2 * jnp.pi * dist.cov) - 0.5 * dist.mean.T @ jsc.linalg.solve(dist.cov, dist.mean)),
     )
 
 
@@ -204,9 +169,7 @@ def _kl_between_gauss_markovs(
 
     def body(carry, args):
         kl_value = carry
-        m, P, \
-            F, d, Sigma, \
-            ref_F, ref_d, ref_Sigma = args
+        m, P, F, d, Sigma, ref_F, ref_d, ref_Sigma = args
 
         diff_F = (ref_F - F).T @ jsc.linalg.solve(ref_Sigma, ref_F - F)
         diff_d = (ref_d - d).T @ jsc.linalg.solve(ref_Sigma, ref_d - d)
@@ -219,36 +182,27 @@ def _kl_between_gauss_markovs(
             + 0.5 * diff_d
             + 0.5 * jnp.trace(jsc.linalg.solve(ref_Sigma, Sigma))
             - 0.5 * dim
-            + 0.5 * logdet(ref_Sigma) - 0.5 * logdet(Sigma)
+            + 0.5 * logdet(ref_Sigma)
+            - 0.5 * logdet(Sigma)
         )
         return kl_value, kl_value
 
-    init_kl_value = kl_between_marginals(
-        gauss_markov.marginal, ref_gauss_markov.marginal
-    )
+    init_kl_value = kl_between_marginals(gauss_markov.marginal, ref_gauss_markov.marginal)
 
     kl_value, _ = jax.lax.scan(
         f=body,
         init=init_kl_value,
-        xs=(
-            *none_or_shift(marginals, 1),
-            *gauss_markov.kernels,
-            *ref_gauss_markov.kernels
-        ),
+        xs=(*none_or_shift(marginals, 1), *gauss_markov.kernels, *ref_gauss_markov.kernels),
         reverse=reverse,
     )
     return kl_value
 
 
-def kl_between_reverse_gauss_markovs(
-    marginals, gauss_markov, ref_gauss_markov
-):
+def kl_between_reverse_gauss_markovs(marginals, gauss_markov, ref_gauss_markov):
     return _kl_between_gauss_markovs(marginals, gauss_markov, ref_gauss_markov, True)
 
 
-def kl_between_forward_gauss_markovs(
-    marginals, gauss_markov, ref_gauss_markov
-):
+def kl_between_forward_gauss_markovs(marginals, gauss_markov, ref_gauss_markov):
     return _kl_between_gauss_markovs(marginals, gauss_markov, ref_gauss_markov, False)
 
 
@@ -306,15 +260,10 @@ def line_search(
             jnp.abs(gd_val) < jnp.abs(state.gd_val),
             lambda _: LineSearchState(param, fn_val, gd_val, True),
             lambda _: state,
-            None
+            None,
         )
 
-        param = jax.lax.cond(
-            pred=gd_val > 0.0,
-            true_fun=reduce_param,
-            false_fun=increase_param,
-            operand=param
-        )
+        param = jax.lax.cond(pred=gd_val > 0.0, true_fun=reduce_param, false_fun=increase_param, operand=param)
         return param, state
 
     def _iteration(carry):
@@ -330,7 +279,7 @@ def line_search(
             pred=jnp.logical_or(nan_condition, inf_condition),
             true_fun=regularize,
             false_fun=update,
-            operand=(param, state)
+            operand=(param, state),
         )
 
     _, state = bounded_while_loop(
@@ -344,27 +293,15 @@ def line_search(
 
 def reduce_param(param) -> ParamStruct:
     # set max to current value
-    return ParamStruct(
-        val=jnp.sqrt(param.min * param.val),
-        min=param.min,
-        max=param.val
-    )
+    return ParamStruct(val=jnp.sqrt(param.min * param.val), min=param.min, max=param.val)
 
 
 def increase_param(param) -> ParamStruct:
     # set min to current value
-    return ParamStruct(
-        val=jnp.sqrt(param.val * param.max),
-        min=param.val,
-        max=param.max
-    )
+    return ParamStruct(val=jnp.sqrt(param.val * param.max), min=param.val, max=param.max)
 
 
-def sample_from_forward_markov(
-    rng_key: Array,
-    gauss_markov: GaussMarkov,
-    num_samples: int
-) -> Array:
+def sample_from_forward_markov(rng_key: Array, gauss_markov: GaussMarkov, num_samples: int) -> Array:
     """Sample trajectories from forward Markov smoother conditional posteriors.
 
     The forward Markov smoother result contains conditional posteriors p(x_t | x_{t-1})
@@ -395,24 +332,16 @@ def sample_from_forward_markov(
             # Sample next state: x_t | x_{t-1} ~ N(F_t @ x_{t-1} + d_t, Sigma_t)
             sample_key, next_key = jax.random.split(key)
             conditional_mean = F_t @ prev_state + d_t
-            next_state = jax.random.multivariate_normal(
-                sample_key, conditional_mean, Sigma_t
-            )
+            next_state = jax.random.multivariate_normal(sample_key, conditional_mean, Sigma_t)
 
             return (next_key, next_state), next_state
 
         # Sample initial state
         init_key, traj_key = jax.random.split(sample_key)
-        initial_state = jax.random.multivariate_normal(
-            init_key, marginal.mean, marginal.cov
-        )
+        initial_state = jax.random.multivariate_normal(init_key, marginal.mean, marginal.cov)
 
         # Sample trajectory using conditional posteriors
-        _, trajectory = jax.lax.scan(
-            sample_step,
-            (traj_key, initial_state),
-            (kernels.F, kernels.d, kernels.Sigma)
-        )
+        _, trajectory = jax.lax.scan(sample_step, (traj_key, initial_state), (kernels.F, kernels.d, kernels.Sigma))
 
         # Prepend initial state to trajectory
         def concat_trees(x, y):

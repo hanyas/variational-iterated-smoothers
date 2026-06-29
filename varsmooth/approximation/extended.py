@@ -1,19 +1,17 @@
 from typing import Union
+
 import jax
 
-from varsmooth.objects import Gaussian
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import ConditionalMomentsModel
+from varsmooth.objects import Gaussian
 
 
 def quadratize():
     raise NotImplementedError
 
 
-def linearize(
-    model: Union[AdditiveGaussianModel, ConditionalMomentsModel],
-    q: Gaussian
-):
+def linearize(model: Union[AdditiveGaussianModel, ConditionalMomentsModel], q: Gaussian):
     if isinstance(model, AdditiveGaussianModel):
         m_x, _ = q
         fun, noise = model
