@@ -1,0 +1,99 @@
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+
+from varsmooth.approximation import gauss_hermite_quadratization as quadratize
+from varsmooth.approximation.fourier_hermite import get_log_observation
+from varsmooth.approximation.fourier_hermite import get_log_prior
+from varsmooth.approximation.fourier_hermite import get_log_transition
+from varsmooth.environments.stoch_volatility import get_data
+from varsmooth.environments.stoch_volatility import make_parameters
+from varsmooth.objects import AdditiveGaussianModel
+from varsmooth.objects import AffineGaussian
+from varsmooth.objects import Gaussian
+from varsmooth.objects import GaussMarkov
+from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
+from varsmooth.smoothers.reverse_markov import std_backward_message
+from varsmooth.smoothers.utils import initialize_reverse_with_forward
+
+jax.config.update("jax_platform_name", "cpu")
+jax.config.update("jax_enable_x64", True)
+
+
+class SVObservation:
+    """y | x ~ N(0, exp(x)), exposed via its log-density for the Fourier-Hermite path."""
+
+    def __init__(self, cov_fn):
+        self.cov_fn = cov_fn
+
+    def log_prob(self, y, x):
+        var = self.cov_fn(x)[0, 0]
+        return -0.5 * jnp.log(2.0 * jnp.pi * var) - 0.5 * jnp.sum(y**2) / var
+
+
+mu = -0.5  # long-run mean log-volatility
+phi = 0.98  # autoregressive persistence
+sigma = 0.16  # transition noise std
+
+nb_steps = 1024  # number of observations
+dim_x, dim_y = 1, 1
+
+p0 = sigma**2 / (1.0 - phi**2)  # prior variance
+rng = np.random.RandomState(23)
+x0 = mu + np.sqrt(p0) * rng.randn()
+_, true_states, observations = get_data(x0, mu, phi, sigma, nb_steps, random_state=rng)
+transition_cov, cov_fn, transition_fn, _, _, _ = make_parameters(mu, phi, sigma)
+
+transition_model = AdditiveGaussianModel(
+    fun=transition_fn,
+    noise=Gaussian(jnp.zeros((dim_x,)), transition_cov),
+)
+observation_model = SVObservation(cov_fn)
+prior_dist = Gaussian(
+    mean=jnp.array([mu]),
+    cov=jnp.array([[p0]]),
+)
+
+F = 1e-1 * np.eye(dim_x)
+d = np.zeros((dim_x,))
+Sigma = 1.0 * np.eye(dim_x)
+
+forward_posterior = GaussMarkov(
+    marginal=prior_dist,
+    kernels=AffineGaussian(
+        F=np.repeat([F], nb_steps, axis=0),
+        d=np.repeat([d], nb_steps, axis=0),
+        Sigma=np.repeat([Sigma], nb_steps, axis=0),
+    ),
+)
+init_posterior = initialize_reverse_with_forward(forward_posterior)
+
+log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
+log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
+
+reverse_markov = iterated_reverse_markov_smoother(
+    observations=jnp.array(observations),
+    log_prior_fn=log_prior_fn,
+    log_transition_fn=log_transition_fn,
+    log_observation_fn=log_observation_fn,
+    init_posterior=init_posterior,
+    kl_constraint=10,
+    init_temperature=1e6,
+)
+marginals = std_backward_message(reverse_markov)
+
+ts = np.arange(nb_steps + 1)
+mean = np.asarray(marginals.mean)[:, 0]
+std = np.sqrt(np.asarray(marginals.cov)[:, 0, 0])
+
+plt.figure(figsize=(10, 4))
+plt.fill_between(ts, mean - 2 * std, mean + 2 * std, alpha=0.2, label=r"$\pm 2\sigma$")
+plt.plot(ts, mean, "-", label="Smoothed")
+plt.plot(ts, np.asarray(true_states)[:, 0], "--", label="True")
+plt.xlabel("time step")
+plt.ylabel(r"log-volatility $x_k$")
+plt.grid()
+plt.legend()
+plt.show()
