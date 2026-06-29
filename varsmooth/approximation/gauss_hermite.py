@@ -1,31 +1,27 @@
 from functools import partial
-from typing import Union, Callable
-
 import itertools
-
-from numpy.polynomial.hermite import hermgauss
+from typing import Callable, Union
 
 import jax
 from jax import Array
 import jax.numpy as jnp
-
-from varsmooth.objects import Gaussian
-from varsmooth.objects import AdditiveGaussianModel
-from varsmooth.objects import ConditionalMomentsModel
+from numpy.polynomial.hermite import hermgauss
 
 from varsmooth.approximation.sigma_points import SigmaPoints
 from varsmooth.approximation.sigma_points import linearize_additive
 from varsmooth.approximation.sigma_points import linearize_conditional
 from varsmooth.approximation.sigma_points import quadratize_any
+from varsmooth.objects import AdditiveGaussianModel
+from varsmooth.objects import ConditionalMomentsModel
+from varsmooth.objects import Gaussian
 
 
 def quadratize(
     fun: Callable,
     q: Gaussian,
-    order: int = 2,
+    order: int = 3,
 ):
-    _get_sigma_points = \
-        lambda m, chol_P: get_sigma_points(m, chol_P, order)
+    _get_sigma_points = lambda m, chol_P: get_sigma_points(m, chol_P, order)
     return quadratize_any(fun, q, _get_sigma_points)
 
 
@@ -34,8 +30,7 @@ def linearize(
     q: Gaussian,
     order: int = 3,
 ):
-    _get_sigma_points = \
-        lambda m, chol_P: get_sigma_points(m, chol_P, order)
+    _get_sigma_points = lambda m, chol_P: get_sigma_points(m, chol_P, order)
 
     if isinstance(model, AdditiveGaussianModel):
         fun, noise = model
@@ -48,11 +43,7 @@ def linearize(
 
 
 @partial(jax.jit, static_argnums=(2,))
-def get_sigma_points(
-    m: Array,
-    chol_P: Array,
-    order: int
-) -> SigmaPoints:
+def get_sigma_points(m: Array, chol_P: Array, order: int) -> SigmaPoints:
 
     nb_dim = m.shape[0]
     wm, wc, xi = _gauss_hermite_weights(nb_dim, order)
@@ -62,6 +53,7 @@ def get_sigma_points(
 
 # Following code adapted from BayesNewton Repository
 # https://github.com/AaltoML/BayesNewton/blob/main/bayesnewton/cubature.py
+
 
 def mvhermgauss(H: int, D: int):
     """
