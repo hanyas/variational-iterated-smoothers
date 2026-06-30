@@ -27,7 +27,7 @@ def log_backward_message(
     log_prior: LogPrior,
     log_transition: LogTransition,
     log_observation: LogObservation,
-    nominal_posterior: GaussMarkov,
+    forward_reference: GaussMarkov,
     damping: float,
 ) -> Tuple[GaussMarkov, LogMarginalNorm, ValueFn, LogMessage, bool]:
 
@@ -98,7 +98,7 @@ def log_backward_message(
         1,
     )
 
-    nominal_marginal, nominal_kernels = nominal_posterior
+    nominal_marginal, nominal_kernels = forward_reference
 
     first_value_fn, (value_fns, kernels, log_bwd_msgs, feasible_pass) = jax.lax.scan(
         f=_backward_step,

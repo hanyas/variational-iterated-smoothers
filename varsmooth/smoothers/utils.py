@@ -38,16 +38,16 @@ def statistical_expansion(
     log_prior_fn: Callable,
     log_transition_fn: Callable,
     log_observation_fn: Callable,
-    posterior_kernels: AffineGaussian,
-    posterior_marginals: Gaussian,
+    kernels: AffineGaussian,
+    marginals: Gaussian,
 ) -> Tuple[LogPrior, LogTransition, LogObservation]:
 
-    init_marginal = none_or_idx(posterior_marginals, 0)
-    prev_marginals = none_or_shift(posterior_marginals, -1)
-    next_marginals = none_or_shift(posterior_marginals, 1)
+    init_marginal = none_or_idx(marginals, 0)
+    prev_marginals = none_or_shift(marginals, -1)
+    next_marginals = none_or_shift(marginals, 1)
 
     log_prior = log_prior_fn(init_marginal)
-    log_transition = log_transition_fn(prev_marginals, posterior_kernels)
+    log_transition = log_transition_fn(prev_marginals, kernels)
     log_observation = log_observation_fn(observations, next_marginals)
     return log_prior, log_transition, log_observation
 

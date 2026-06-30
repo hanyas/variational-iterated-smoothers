@@ -39,38 +39,38 @@ def two_filter_smoother(
     marginals = std_forward_message(forward_reference)
 
     log_prior, log_transition, log_observation = statistical_expansion(
-        observations,
-        log_prior_fn,
-        log_transition_fn,
-        log_observation_fn,
-        forward_reference.kernels,  # or reverse_reference.kernels
-        marginals,
+        observations=observations,
+        log_prior_fn=log_prior_fn,
+        log_transition_fn=log_transition_fn,
+        log_observation_fn=log_observation_fn,
+        kernels=forward_reference.kernels,  # or reverse_reference.kernels
+        marginals=marginals,
     )
 
     damping = temperature / (1.0 + temperature)
     forward_posterior, _, _, backward_message, _ = log_backward_message(
-        log_prior,
-        log_transition,
-        log_observation,
-        forward_reference,
-        damping,
+        log_prior=log_prior,
+        log_transition=log_transition,
+        log_observation=log_observation,
+        forward_reference=forward_reference,
+        damping=damping,
     )
 
     reverse_posterior, _, forward_message, _, _ = log_forward_message(
-        log_prior,
-        log_transition,
-        log_observation,
-        reverse_reference,
-        damping,
+        log_prior=log_prior,
+        log_transition=log_transition,
+        log_observation=log_observation,
+        reverse_reference=reverse_reference,
+        damping=damping,
     )
 
     marginals = update_marginals(
-        marginals,
-        forward_message,
-        backward_message,
-        forward_posterior.marginal,
-        reverse_posterior.marginal,
-        damping,
+        marginals=marginals,
+        forward_message=forward_message,
+        backward_message=backward_message,
+        first_boundary=forward_posterior.marginal,
+        last_boundary=reverse_posterior.marginal,
+        damping=damping,
     )
     return marginals
 
@@ -128,9 +128,6 @@ def update_marginals(
         "log_prior_fn",
         "log_transition_fn",
         "log_observation_fn",
-        "kl_constraint",
-        "init_temperature",
-        "min_temperature",
         "max_iterations",
         "return_history",
     ],
@@ -193,12 +190,12 @@ def iterated_two_filter_smoother(
 
         # Step 1: Compute statistical expansion (around the merged marginals)
         log_prior, log_transition, log_observation = statistical_expansion(
-            observations,
-            log_prior_fn,
-            log_transition_fn,
-            log_observation_fn,
-            forward_reference.kernels,  # or reverse_reference.kernels
-            reference_marginals,
+            observations=observations,
+            log_prior_fn=log_prior_fn,
+            log_transition_fn=log_transition_fn,
+            log_observation_fn=log_observation_fn,
+            kernels=forward_reference.kernels,  # or reverse_reference.kernels
+            marginals=reference_marginals,
         )
 
         # Step 2: Define dual objective function for line search
@@ -206,12 +203,12 @@ def iterated_two_filter_smoother(
             """Dual objective function for temperature optimization."""
             damping = temperature / (1.0 + temperature)
             return dual_objective(
-                log_prior,
-                log_transition,
-                log_observation,
-                reverse_reference,
-                kl_constraint,
-                damping,
+                log_prior=log_prior,
+                log_transition=log_transition,
+                log_observation=log_observation,
+                reference_posterior=reverse_reference,
+                kl_constraint=kl_constraint,
+                damping=damping,
             )
 
         # Step 3: Define gradient function for line search.
@@ -219,18 +216,18 @@ def iterated_two_filter_smoother(
             """Constraint slack on the merged-marginal move: kl_constraint - KL."""
             damping = temperature / (1.0 + temperature)
             forward_posterior, _, _, _, fwd_feasible = log_backward_message(
-                log_prior,
-                log_transition,
-                log_observation,
-                forward_reference,
-                damping,
+                log_prior=log_prior,
+                log_transition=log_transition,
+                log_observation=log_observation,
+                forward_reference=forward_reference,
+                damping=damping,
             )
             reverse_posterior, _, _, _, rev_feasible = log_forward_message(
-                log_prior,
-                log_transition,
-                log_observation,
-                reverse_reference,
-                damping,
+                log_prior=log_prior,
+                log_transition=log_transition,
+                log_observation=log_observation,
+                reverse_reference=reverse_reference,
+                damping=damping,
             )
 
             fwd_kl_div = kl_between_forward_gauss_markovs(
@@ -258,31 +255,46 @@ def iterated_two_filter_smoother(
         # inactive. If the merged marginals already move within the constraint,
         # take the full step directly.
         full_fwd_post, _, _, full_bwd_msg, full_fwd_feasible = log_backward_message(
-            log_prior, log_transition, log_observation, forward_reference, 0.0
+            log_prior=log_prior,
+            log_transition=log_transition,
+            log_observation=log_observation,
+            forward_reference=forward_reference,
+            damping=0.0,
         )
         full_rev_post, _, full_fwd_msg, _, full_rev_feasible = log_forward_message(
-            log_prior, log_transition, log_observation, reverse_reference, 0.0
+            log_prior=log_prior,
+            log_transition=log_transition,
+            log_observation=log_observation,
+            reverse_reference=reverse_reference,
+            damping=0.0,
         )
         full_marginals = update_marginals(
-            reference_marginals,
-            full_fwd_msg,
-            full_bwd_msg,
-            full_fwd_post.marginal,
-            full_rev_post.marginal,
-            0.0,
+            marginals=reference_marginals,
+            forward_message=full_fwd_msg,
+            backward_message=full_bwd_msg,
+            first_boundary=full_fwd_post.marginal,
+            last_boundary=full_rev_post.marginal,
+            damping=0.0,
         )
         full_feasible = jnp.logical_and(jnp.all(full_fwd_feasible), jnp.all(full_rev_feasible))
-        full_kl = jax.lax.cond(
-            full_feasible,
-            lambda: 0.5
-            * (
-                kl_between_forward_gauss_markovs(std_forward_message(full_fwd_post), full_fwd_post, forward_reference)
-                + kl_between_reverse_gauss_markovs(
-                    std_backward_message(full_rev_post), full_rev_post, reverse_reference
-                )
-            ),
-            lambda: jnp.inf,
-        )
+
+        def _full_step_kl():
+            forward_marginals = std_forward_message(full_fwd_post)
+            forward_kl = kl_between_forward_gauss_markovs(
+                marginals=forward_marginals,
+                gauss_markov=full_fwd_post,
+                ref_gauss_markov=forward_reference,
+            )
+            reverse_marginals = std_backward_message(full_rev_post)
+            reverse_kl = kl_between_reverse_gauss_markovs(
+                marginals=reverse_marginals,
+                gauss_markov=full_rev_post,
+                ref_gauss_markov=reverse_reference,
+            )
+            return 0.5 * (forward_kl + reverse_kl)
+
+        full_kl = jax.lax.cond(full_feasible, _full_step_kl, lambda: jnp.inf)
+
         take_full_step = jnp.logical_and(full_feasible, full_kl <= kl_constraint)
 
         # Step 4: Perform line search to find optimal temperature
@@ -294,26 +306,26 @@ def iterated_two_filter_smoother(
         damping = temperature / (1.0 + temperature)
 
         forward_posterior, _, _, backward_message, _ = log_backward_message(
-            log_prior,
-            log_transition,
-            log_observation,
-            forward_reference,
-            damping,
+            log_prior=log_prior,
+            log_transition=log_transition,
+            log_observation=log_observation,
+            forward_reference=forward_reference,
+            damping=damping,
         )
         reverse_posterior, _, forward_message, _, _ = log_forward_message(
-            log_prior,
-            log_transition,
-            log_observation,
-            reverse_reference,
-            damping,
+            log_prior=log_prior,
+            log_transition=log_transition,
+            log_observation=log_observation,
+            reverse_reference=reverse_reference,
+            damping=damping,
         )
         candidate_marginals = update_marginals(
-            reference_marginals,
-            forward_message,
-            backward_message,
-            forward_posterior.marginal,
-            reverse_posterior.marginal,
-            damping,
+            marginals=reference_marginals,
+            forward_message=forward_message,
+            backward_message=backward_message,
+            first_boundary=forward_posterior.marginal,
+            last_boundary=reverse_posterior.marginal,
+            damping=damping,
         )
 
         ls_marginals, ls_fwd_post, ls_rev_post = jax.lax.cond(
@@ -334,10 +346,14 @@ def iterated_two_filter_smoother(
         feasible = jnp.logical_or(take_full_step, line_search_feasible)
 
         fwd_kl_div = kl_between_forward_gauss_markovs(
-            std_forward_message(forward_post), forward_post, forward_reference
+            marginals=std_forward_message(forward_post),
+            gauss_markov=forward_post,
+            ref_gauss_markov=forward_reference,
         )
         rvs_kl_div = kl_between_reverse_gauss_markovs(
-            std_backward_message(reverse_post), reverse_post, reverse_reference
+            marginals=std_backward_message(reverse_post),
+            gauss_markov=reverse_post,
+            ref_gauss_markov=reverse_reference,
         )
 
         def _log_feasible(_):
@@ -370,6 +386,10 @@ def iterated_two_filter_smoother(
             "dual": dual_value,
             "feasible": feasible,
             "marginals": marginals,
+            "forward_marginals": std_forward_message(forward_post),
+            "forward_kernels": forward_post.kernels,
+            "reverse_marginals": std_backward_message(reverse_post),
+            "reverse_kernels": reverse_post.kernels,
         }
         return (marginals, forward_post, reverse_post), temperature, diagnostics
 
