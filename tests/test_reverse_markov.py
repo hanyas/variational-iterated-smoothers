@@ -2,13 +2,13 @@ import jax
 import numpy as np
 import pytest
 
-from tests.kalman import rts_smoother
 from tests.lgssm import simulate
 from tests.test_utils import generate_system
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
+from varsmooth.smoothers.rts_kalman import rts_smoother
 from varsmooth.smoothers.reverse_markov import reverse_markov_smoother
 from varsmooth.smoothers.reverse_markov import std_backward_message
 

@@ -1,7 +1,6 @@
 import jax
 import numpy as np
 
-from tests.kalman import rts_smoother
 from varsmooth.approximation import gauss_hermite_linearization as linearize
 from varsmooth.approximation.linearization import get_log_observation
 from varsmooth.approximation.linearization import get_log_prior
@@ -16,6 +15,7 @@ from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.forward_markov import forward_markov_smoother
 from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
 from varsmooth.smoothers.forward_markov import std_forward_message
+from varsmooth.smoothers.rts_kalman import rts_smoother
 
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_platform_name", "cpu")

@@ -1,7 +1,6 @@
 import jax
 import numpy as np
 
-from tests.kalman import rts_smoother
 from varsmooth.approximation import gauss_hermite_linearization as linearize
 from varsmooth.approximation.linearization import get_log_observation
 from varsmooth.approximation.linearization import get_log_prior
@@ -14,6 +13,7 @@ from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.forward_markov import std_forward_message
+from varsmooth.smoothers.rts_kalman import rts_smoother
 from varsmooth.smoothers.two_filter import iterated_two_filter_smoother
 from varsmooth.smoothers.two_filter import two_filter_smoother
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
