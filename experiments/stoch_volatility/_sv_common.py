@@ -37,14 +37,12 @@ SVSystem = namedtuple("SVSystem", ["mu", "phi", "sigma", "prior"])
 
 
 def make_sv_system(mu=-0.5, phi=0.98, sigma=0.16):
-    """Stationary univariate SV model. Defaults are a persistent, low-vol regime."""
     p0 = sigma**2 / (1.0 - phi**2)
     prior = Gaussian(jnp.array([mu]), jnp.array([[p0]]))
     return SVSystem(mu, phi, sigma, prior)
 
 
 def simulate_data(system, nb_steps, rng):
-    """Simulate (x_{0:T}, y_{1:T}) with the stoch_volatility environment."""
     mu, phi, sigma = system.mu, system.phi, system.sigma
     p0 = float(system.prior.cov[0, 0])
     x0 = mu + np.sqrt(p0) * rng.randn()
