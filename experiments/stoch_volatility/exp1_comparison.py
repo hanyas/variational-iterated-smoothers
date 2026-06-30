@@ -70,18 +70,19 @@ def main():
     )
 
     fig, ax = plt.subplots(figsize=(13.0, 4.0))
-    ax.axhline(SYSTEM.mu, color="0.75", lw=0.8, zorder=0)
-    ax.fill_between(ks, fh_m - 2 * fh_s, fh_m + 2 * fh_s, color="#1f77b4", alpha=0.15, zorder=1)
-    ax.plot(ks, x_flat, "-", color="black", lw=1.1, label="true $x_k$", zorder=4)
-    ax.plot(ks, fh_m, "-", color="#1f77b4", lw=1.0, label="ours (FH)", zorder=5)
-    ax.plot(ks, gslr_m, ":", color="0.30", lw=1.0, label="damped (GSLR)", zorder=3)
+    ax.axhline(SYSTEM.mu, color="0.7", lw=0.8, zorder=0)
+    ax.fill_between(ks, gslr_m - 2 * gslr_s, gslr_m + 2 * gslr_s, color="0.8", alpha=0.7, zorder=1, label=r"GSLR $\pm2\sigma$")
+    ax.fill_between(ks, fh_m - 2 * fh_s, fh_m + 2 * fh_s, color="0.45", alpha=0.4, zorder=2, label=r"FH $\pm2\sigma$")
+    ax.plot(ks, x_flat, "-", color="black", lw=1.0, label="true $x_k$", zorder=4)
+    ax.plot(ks, fh_m, "-", color="black", lw=1.8, label="ours (FH)", zorder=5)
+    ax.plot(ks, gslr_m, ":", color="black", lw=1.3, label="damped (GSLR)", zorder=3)
     ax.set(
         xlim=(0, NUM_STEPS),
         xlabel="time step $k$",
         ylabel="log-volatility $x_k$",
         title="Stochastic volatility: smoothed log-volatility vs. truth",
     )
-    ax.legend(frameon=False, ncol=2, fontsize=9, loc="best")
+    ax.legend(frameon=False, ncol=3, fontsize=9, loc="best")
     fig.tight_layout()
     sv.save_fig(fig, "fig_sv_trajectory.pdf")
     plt.close(fig)
