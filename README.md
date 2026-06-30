@@ -1,4 +1,4 @@
-# Variational Iterated Gaussian Smoothing
+# Recursive Entropic Variational Smoothing in State-Space Models
 
 Implements the approximate inference algorithms from the paper [Proximal Approximate Inference in State-Space Models](https://arxiv.org/abs/2511.15409). This code was written by [Hany Abdulsamad](https://github.com/hanyas).
 
@@ -28,15 +28,32 @@ The quadratic log-potentials are built from the model with either posterior line
 
 ## Examples
 
-Two model families are provided under `examples/`:
+Single-run demonstrations live under `examples/`, one directory per model family:
 
-- `linear_model` — a linear-Gaussian system, validated against the exact RTS smoother.
-- `bearing_model` — a nonlinear coordinated-turn (bearings-only) tracking task.
+- `linear_gaussian` — linear-Gaussian system, validated against the exact RTS smoother.
+- `bearing_only` — nonlinear coordinated-turn (bearings-only) tracking.
+- `cubic_sensor` — scalar AR(1) state observed through a cubic sensor (Katayama, 2013).
+- `stoch_volatility` — univariate stochastic-volatility model.
 
-Each script selects a smoother (forward / reverse / two-filter) and an approximation, named `pl_` for posterior linearization and `fh_` for Fourier–Hermite. For example:
+Each script selects a smoother and an approximation: the prefix is `pl_` (posterior linearization) or `fh_` (Fourier–Hermite), and the suffix is `_forward`, `_reverse`, or `_two_filt`. Available combinations vary by model. For example:
 
 ```bash
-python examples/bearing_model/pl_reverse.py
+python examples/linear_gaussian/fh_two_filt.py
+python examples/bearing_only/pl_reverse.py
+```
+
+## Experiments
+
+The quantitative experiments from the paper live under `experiments/`. Shared utilities (metrics, smoother runners, plotting and I/O) are collected in `experiments/common.py`, with a thin per-model harness (`_<model>_common.py`):
+
+- `linear_gaussian/` — exact recovery across approximations, trust-region convergence to the exact posterior, and entropic β-interpolation (`exp1_recovery.py`, `exp2_proximal.py`, `exp3_interpolation.py`; `run_all.py` runs all three).
+- `cubic_sensor/` — ELBO and calibration NLPD per iteration, the damped smoother vs. undamped IPLS (`exp1_elbo_nlpd.py`; the IPLS baseline uses [`parsmooth`](https://github.com/EEA-sensors/sqrt-parallel-smoothers)).
+- `stoch_volatility/` — smoothed log-volatility vs. ground truth, and an accuracy / NLPD sweep over the vol-of-vol (`exp1_comparison.py`, `exp2_sweep.py`).
+
+Each script writes its figures and CSVs to the model's `outputs/` directory; run it from the model directory, e.g.:
+
+```bash
+cd experiments/linear_gaussian && python run_all.py
 ```
 
 ## Citation
