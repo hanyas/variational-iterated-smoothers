@@ -1,11 +1,4 @@
-"""Stochastic-volatility environment: AR(1) log-volatility, zero-mean state-dependent observation.
-
-Unlike the additive-Gaussian environments, the observation here is not an additive-noise mean
-function: y_t | x_t ~ N(0, exp(x_t)). All the information about the state lives in the
-observation *variance*, so `make_parameters` returns the conditional moments of the observation
-(a zero mean function and a state-dependent covariance function) in place of a mean function and a
-constant covariance matrix.
-"""
+"""Stochastic-volatility environment: AR(1) log-volatility, zero-mean state-dependent observation."""
 
 import jax.numpy as jnp
 from jax.tree_util import Partial
