@@ -41,7 +41,6 @@ def _truncate(history, pad=1):
 
 
 def run_traces(system, ys, rts):
-    """Forward KL-constrained iteration at each trust-region radius eps."""
     fns = lg.make_model_fns(system, "GSLR", "gauss_hermite")
     init = common.make_forward_init(system, NUM_STEPS, F_scale=0.1, Sigma_scale=1.0)
     ablation = {}
@@ -54,12 +53,10 @@ def run_traces(system, ys, rts):
 
 
 def _eps_colors():
-    # greyscale ramp: small eps dark, large eps light
     return plt.cm.gray(np.linspace(0.0, 0.62, len(KL_ABLATION)))
 
 
 def fig_convergence(ablation):
-    """The cliff: avg. marginal KL to RTS vs iteration, swept over the radius eps."""
     fig, ax = plt.subplots(figsize=(5.8, 4.2))
     for eps, col in zip(KL_ABLATION, _eps_colors()):
         h = _truncate(ablation[eps])
@@ -83,7 +80,6 @@ def fig_convergence(ablation):
 
 
 def fig_damping(ablation):
-    """Adaptive damping beta (log y): near the cap while active, then a full step."""
     fig, ax = plt.subplots(figsize=(5.8, 4.2))
     for eps, col in zip(KL_ABLATION, _eps_colors()):
         h = _truncate(ablation[eps], pad=0)

@@ -27,7 +27,6 @@ common.set_style()
 
 
 def fit(system, ys, horizon):
-    """Smoothed marginals for the damped GSLR and FH iterations on one dataset."""
     gslr = sv.make_model_fns(system, "GSLR", "gauss_hermite")
     fh = sv.make_model_fns(system, "FH", "gauss_hermite")
     init = common.make_forward_init(system, horizon)
@@ -71,7 +70,15 @@ def main():
 
     fig, ax = plt.subplots(figsize=(13.0, 4.0))
     ax.axhline(SYSTEM.mu, color="0.7", lw=0.8, zorder=0)
-    ax.fill_between(ks, gslr_m - 2 * gslr_s, gslr_m + 2 * gslr_s, color="0.8", alpha=0.7, zorder=1, label=r"GSLR $\pm2\sigma$")
+    ax.fill_between(
+        ks,
+        gslr_m - 2 * gslr_s,
+        gslr_m + 2 * gslr_s,
+        color="0.8",
+        alpha=0.7,
+        zorder=1,
+        label=r"GSLR $\pm2\sigma$",
+    )
     ax.fill_between(ks, fh_m - 2 * fh_s, fh_m + 2 * fh_s, color="0.45", alpha=0.4, zorder=2, label=r"FH $\pm2\sigma$")
     ax.plot(ks, x_flat, "-", color="black", lw=1.0, label="true $x_k$", zorder=4)
     ax.plot(ks, fh_m, "-", color="black", lw=1.8, label="ours (FH)", zorder=5)
