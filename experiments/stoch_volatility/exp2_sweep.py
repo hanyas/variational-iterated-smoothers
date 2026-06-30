@@ -33,10 +33,10 @@ def fit_all(system, ys):
     init = common.make_forward_init(system, NUM_STEPS)
     with common.silence_stdout():
         q_gslr = jax.block_until_ready(
-            common.run_iterated_smoother("forward", gslr, ys, init, kl_constraint=KL_STEP, max_iterations=MAX_ITER)
+            common.run_iterated_smoother("reverse", gslr, ys, init, kl_constraint=KL_STEP, max_iterations=MAX_ITER)
         )
         q_fh = jax.block_until_ready(
-            common.run_iterated_smoother("forward", fh, ys, init, kl_constraint=KL_STEP, max_iterations=MAX_ITER)
+            common.run_iterated_smoother("reverse", fh, ys, init, kl_constraint=KL_STEP, max_iterations=MAX_ITER)
         )
     return q_gslr, q_fh
 
