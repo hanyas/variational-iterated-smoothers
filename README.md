@@ -1,4 +1,4 @@
-# Recursive Entropic Variational Smoothing in State-Space Models
+# Recursive Entropic Variational Smoothing
 
 Implements the approximate inference algorithms from the paper [Proximal Approximate Inference in State-Space Models](https://arxiv.org/abs/2511.15409). This code was written by [Hany Abdulsamad](https://github.com/hanyas).
 
