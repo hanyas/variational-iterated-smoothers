@@ -15,7 +15,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import common
 from common import FH_BACKENDS
 from common import GSLR_BACKENDS
+from common import set_style
+from common import silence_stdout
+from common import write_csv
 
+from varsmooth.approximation import cubature_linearization
+from varsmooth.approximation import cubature_quadratization
 from varsmooth.approximation import fourier_hermite as _fh
 from varsmooth.approximation import gauss_hermite_linearization
 from varsmooth.approximation import gauss_hermite_quadratization
@@ -31,7 +36,10 @@ OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 GH5_QUAD = lambda fun, q: gauss_hermite_quadratization(fun, q, order=5)
-GH5_LIN = lambda fun, q: gauss_hermite_linearization(fun, q, order=5)
+GH5_LINEAR = lambda fun, q: gauss_hermite_linearization(fun, q, order=5)
+
+CUB_QUAD = lambda fun, q: cubature_quadratization(fun, q)
+CUB_LINEAR = lambda fun, q: cubature_linearization(fun, q)
 
 DIM_X, DIM_Y = 1, 1
 
@@ -82,6 +90,7 @@ def make_prior_chain_init(system, nb_steps):
     F = system.phi0 * np.eye(DIM_X)
     d = np.array([(1.0 - system.phi0) * system.mu0])
     Sigma = Q * np.eye(DIM_X)
+
     return GaussMarkov(
         marginal=system.prior,
         kernels=AffineGaussian(

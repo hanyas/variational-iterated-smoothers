@@ -23,23 +23,25 @@ from varsmooth.smoothers.forward_markov import log_evidence as fwd_log_evidence
 from varsmooth.smoothers.reverse_markov import log_evidence as rev_log_evidence
 from varsmooth.smoothers.reverse_markov import reverse_markov_smoother
 from varsmooth.smoothers.rts_kalman import rts_smoother
-from varsmooth.smoothers.two_filter import two_filter_smoother
+from varsmooth.smoothers.hybrid_markov import hybrid_markov_smoother
 from varsmooth.smoothers.utils import statistical_expansion
 from varsmooth.smoothers.utils import std_backward_message
 from varsmooth.smoothers.utils import std_forward_message
 
-# make `varsmooth` and `tests` importable regardless of CWD
-REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import common
+from common import DIRECTIONS
 from common import FH_BACKENDS
 from common import GSLR_BACKENDS
+from common import avg_kl
+from common import get_markov_history
 from common import get_marginals
 from common import make_forward_init
 from common import make_reverse_init
+from common import rmse
+from common import run_iterated_smoother
+from common import set_style
+from common import write_csv
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -65,24 +67,20 @@ def simulate_data(system, nb_steps, rng):
 
 
 # ---- exact oracles ----------------------------------------------------------
-def _batched_models(system, nb_steps):
-    lin_trans = AffineGaussian(
+def rts_marginals(system, observations):
+    nb_steps = observations.shape[0]
+
+    linear_transition = AffineGaussian(
         np.repeat([system.A], nb_steps, axis=0),
         np.repeat([system.b], nb_steps, axis=0),
         np.repeat([system.Omega], nb_steps, axis=0),
     )
-    lin_obs = AffineGaussian(
+    linear_observation = AffineGaussian(
         np.repeat([system.H], nb_steps, axis=0),
         np.repeat([system.e], nb_steps, axis=0),
         np.repeat([system.Delta], nb_steps, axis=0),
     )
-    return lin_trans, lin_obs
-
-
-def rts_marginals(system, observations):
-    nb_steps = observations.shape[0]
-    lin_trans, lin_obs = _batched_models(system, nb_steps)
-    return rts_smoother(observations, system.prior, lin_trans, lin_obs)
+    return rts_smoother(observations, system.prior, linear_transition, linear_observation)
 
 
 def kalman_log_evidence(system, observations):
@@ -95,7 +93,9 @@ def kalman_log_evidence(system, observations):
         P_pred = A @ P @ A.T + Omega
         y_hat = H @ m_pred + e
         S = H @ P_pred @ H.T + Delta
+
         ll = ll + Gaussian(y_hat, S).log_prob(y)
+
         K = jsc.linalg.solve(S.T, H @ P_pred.T).T
         m = m_pred + K @ (y - y_hat)
         P = P_pred - K @ S @ K.T
@@ -112,8 +112,14 @@ def make_model_fns(system, family, backend):
     Q, R, transition_function, observation_function, _, _ = lg_env.make_parameters(
         system.A, system.b, system.Omega, system.H, system.e, system.Delta
     )
-    transition_model = AdditiveGaussianModel(fun=transition_function, noise=Gaussian(jnp.zeros((dim_x,)), Q))
-    observation_model = AdditiveGaussianModel(fun=observation_function, noise=Gaussian(jnp.zeros((dim_y,)), R))
+    transition_model = AdditiveGaussianModel(
+        fun=transition_function,
+        noise=Gaussian(jnp.zeros((dim_x,)), Q),
+    )
+    observation_model = AdditiveGaussianModel(
+        fun=observation_function,
+        noise=Gaussian(jnp.zeros((dim_y,)), R),
+    )
 
     if family == "GSLR":
         method = GSLR_BACKENDS[backend]
@@ -143,7 +149,7 @@ def run_single_pass(direction, model_fns, observations, system, nb_steps, temper
     elif direction == "hybrid":
         fwd_init = make_forward_init(system, nb_steps, **init_kwargs)
         rev_init = make_reverse_init(system, nb_steps, **init_kwargs)
-        res = two_filter_smoother(observations, lp, lt, lo, fwd_init, rev_init, temperature)
+        res = hybrid_markov_smoother(observations, lp, lt, lo, fwd_init, rev_init, temperature)
     else:
         raise ValueError(direction)
     return get_marginals(direction, res)

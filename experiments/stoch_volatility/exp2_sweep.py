@@ -6,59 +6,76 @@ Outputs:
   outputs/results_sv_sweep_summary.csv -- per-sigma mean +/- 1 std
 """
 
+from pathlib import Path
+
 import jax
 import matplotlib
 import numpy as np
 
 matplotlib.use("Agg")
-import _sv_common as sv
-import common
 import matplotlib.pyplot as plt
+import sv_common as sv
 
-NUM_STEPS = 1000
-
-SIGMAS = [0.10, 0.15, 0.20, 0.25, 0.30]
-
-KL_STEP = 10.0
-NUM_TRIALS = 10
-MAX_ITER = 50
-
-common.set_style()
+OUTDIR = Path(__file__).resolve().parent / "outputs"
+OUTDIR.mkdir(exist_ok=True)
 
 
-def fit_all(system, ys):
-    gslr = sv.make_model_fns(system, "GSLR", "gauss_hermite")
-    fh = sv.make_model_fns(system, "FH", "gauss_hermite")
-    init = common.make_forward_init(system, NUM_STEPS)
-    with common.silence_stdout():
+def fit_all(system, ys, num_steps, kl_step, max_iter):
+    gslr_fns = sv.make_model_fns(system, "GSLR", "gauss_hermite")
+    fh_fns = sv.make_model_fns(system, "FH", "gauss_hermite")
+    init_fwd = sv.make_forward_init(system, num_steps)
+
+    with sv.silence_stdout():
         q_gslr = jax.block_until_ready(
-            common.run_iterated_smoother("reverse", gslr, ys, init, kl_constraint=KL_STEP, max_iterations=MAX_ITER)
+            sv.run_iterated_smoother(
+                direction="reverse",
+                model_fns=gslr_fns,
+                observations=ys,
+                init_fwd_posterior=init_fwd,
+                kl_constraint=kl_step,
+                max_iterations=max_iter,
+            )
         )
         q_fh = jax.block_until_ready(
-            common.run_iterated_smoother("reverse", fh, ys, init, kl_constraint=KL_STEP, max_iterations=MAX_ITER)
+            sv.run_iterated_smoother(
+                direction="reverse",
+                model_fns=fh_fns,
+                observations=ys,
+                init_fwd_posterior=init_fwd,
+                kl_constraint=kl_step,
+                max_iterations=max_iter,
+            )
         )
     return q_gslr, q_fh
 
 
 def main():
+    num_steps = 1000
+
+    sigmas = [0.10, 0.15, 0.20, 0.25, 0.30]
+
+    kl_step = 10.0
+    num_trials = 10
+    max_iter = 50
+
     rows = []
-    sig = np.array(SIGMAS)
     rmse_keys = ["GSLR", "FH"]
     nlpd_keys = ["GSLR", "FH"]
     rmse_mean = {k: [] for k in rmse_keys}
     rmse_std = {k: [] for k in rmse_keys}
     nlpd_mean = {k: [] for k in nlpd_keys}
     nlpd_std = {k: [] for k in nlpd_keys}
-    for sigma in SIGMAS:
+
+    for sigma in sigmas:
         system = sv.make_sv_system(sigma=sigma)
         pr = {k: [] for k in rmse_keys}
         pn = {k: [] for k in nlpd_keys}
-        for seed in range(1, NUM_TRIALS + 1):
-            x_true, ys = sv.simulate_data(system, NUM_STEPS, np.random.RandomState(seed))
+        for seed in range(1, num_trials + 1):
+            x_true, ys = sv.simulate_data(system, num_steps, np.random.RandomState(seed))
             x_flat = np.asarray(x_true).reshape(-1)
-            q_gslr, q_fh = fit_all(system, ys)
-            gslr_rmse, gslr_nlpd = common.rmse(q_gslr.mean, x_flat), float(common.nlpd(q_gslr, x_flat))
-            fh_rmse, fh_nlpd = common.rmse(q_fh.mean, x_flat), float(common.nlpd(q_fh, x_flat))
+            q_gslr, q_fh = fit_all(system, ys, num_steps, kl_step, max_iter)
+            gslr_rmse, gslr_nlpd = sv.rmse(q_gslr.mean, x_flat), float(sv.nlpd(q_gslr, x_flat))
+            fh_rmse, fh_nlpd = sv.rmse(q_fh.mean, x_flat), float(sv.nlpd(q_fh, x_flat))
             pr["GSLR"].append(gslr_rmse)
             pr["FH"].append(fh_rmse)
             pn["GSLR"].append(gslr_nlpd)
@@ -87,24 +104,9 @@ def main():
             f"NLPD GSLR {nlpd_mean['GSLR'][-1]:.3f} FH {nlpd_mean['FH'][-1]:.3f}"
         )
 
-    common.write_csv(
-        sv.OUTPUT_DIR / "results_sv_sweep.csv",
-        ["sigma", "seed", "gslr_rmse", "fh_rmse", "gslr_nlpd", "fh_nlpd"],
-        rows,
-    )
-    common.write_csv(
-        sv.OUTPUT_DIR / "results_sv_sweep_summary.csv",
-        [
-            "sigma",
-            "gslr_rmse",
-            "gslr_rmse_std",
-            "fh_rmse",
-            "fh_rmse_std",
-            "gslr_nlpd",
-            "gslr_nlpd_std",
-            "fh_nlpd",
-            "fh_nlpd_std",
-        ],
+    sv.write_csv(OUTDIR / "results_sv_sweep.csv", rows)
+    sv.write_csv(
+        OUTDIR / "results_sv_sweep_summary.csv",
         [
             dict(
                 sigma=sg,
@@ -117,13 +119,14 @@ def main():
                 fh_nlpd=nlpd_mean["FH"][i],
                 fh_nlpd_std=nlpd_std["FH"][i],
             )
-            for i, sg in enumerate(SIGMAS)
+            for i, sg in enumerate(sigmas)
         ],
     )
 
+    sv.set_style()
     fig, (axR, axN) = plt.subplots(1, 2, figsize=(11.0, 4.2))
     axR.errorbar(
-        sig,
+        np.array(sigmas),
         rmse_mean["GSLR"],
         yerr=rmse_std["GSLR"],
         fmt="-s",
@@ -133,7 +136,7 @@ def main():
         label="Iterated (GSLR)",
     )
     axR.errorbar(
-        sig,
+        np.array(sigmas),
         rmse_mean["FH"],
         yerr=rmse_std["FH"],
         fmt="-o",
@@ -145,7 +148,7 @@ def main():
     axR.set(xlabel=r"vol-of-vol $\sigma$", ylabel="RMSE to true log-volatility", title="(a) Accuracy")
     axR.legend(frameon=False, loc="upper left")
     axN.errorbar(
-        sig,
+        np.array(sigmas),
         nlpd_mean["GSLR"],
         yerr=nlpd_std["GSLR"],
         fmt="-s",
@@ -155,7 +158,7 @@ def main():
         label="Iterated (GSLR)",
     )
     axN.errorbar(
-        sig,
+        np.array(sigmas),
         nlpd_mean["FH"],
         yerr=nlpd_std["FH"],
         fmt="-o",
@@ -167,7 +170,7 @@ def main():
     axN.set(xlabel=r"vol-of-vol $\sigma$", ylabel="NLPD of the true log-volatility", title="(b) Log score")
     axN.legend(frameon=False, loc="upper left")
     fig.tight_layout()
-    sv.save_fig(fig, "fig_sv_sigma_sweep.pdf")
+    fig.savefig(OUTDIR / "fig_sv_sigma_sweep.pdf", bbox_inches="tight")
     plt.close(fig)
 
 

@@ -18,15 +18,17 @@ from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import ConditionalMomentsModel
 from varsmooth.objects import Gaussian
 
-# make `varsmooth` importable regardless of CWD
-REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import common
 from common import FH_BACKENDS
 from common import GSLR_BACKENDS
+from common import make_forward_init
+from common import nlpd
+from common import rmse
+from common import run_iterated_smoother
+from common import set_style
+from common import silence_stdout
+from common import write_csv
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)

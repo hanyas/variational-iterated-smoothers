@@ -21,14 +21,13 @@ from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
 from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
-from varsmooth.smoothers.two_filter import iterated_two_filter_smoother
+from varsmooth.smoothers.hybrid_markov import iterated_hybrid_markov_smoother
 from varsmooth.smoothers.utils import free_energy
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
 from varsmooth.smoothers.utils import kl_between_marginals
 from varsmooth.smoothers.utils import statistical_expansion
 from varsmooth.smoothers.utils import std_backward_message
 from varsmooth.smoothers.utils import std_forward_message
-
 
 # ---- approximation backends (label -> linearization / quadratization method) ----
 GSLR_BACKENDS = {
@@ -60,9 +59,10 @@ def silence_stdout():
         os.close(saved)
 
 
-def write_csv(path, fieldnames, rows):
-    """Write `rows` (list of dicts) to `path` as CSV with the given header."""
+def write_csv(path, rows):
+    """Write `rows` (list of dicts) to `path` as CSV; columns are the first row's keys."""
     path = Path(path)
+    fieldnames = list(rows[0]) if rows else []
     with path.open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=fieldnames)
         w.writeheader()
@@ -127,6 +127,7 @@ def nlpd(marginals, x_true):
     m = jnp.asarray(marginals.mean)
     P = jnp.asarray(marginals.cov)
     x = jnp.asarray(x_true).reshape(m.shape)
+
     diff = x - m
     quad = jnp.sum(diff * jnp.linalg.solve(P, diff[..., None])[..., 0], axis=-1)
     logdet = jnp.linalg.slogdet(P)[1]
@@ -134,7 +135,6 @@ def nlpd(marginals, x_true):
 
 
 # ---- smoother runners -------------------------------------------------------
-DIRECTIONS = ("forward", "reverse", "hybrid")
 
 
 def make_forward_init(system, nb_steps, F_scale=0.1, Sigma_scale=1.0, prior=None):
@@ -216,7 +216,7 @@ def run_iterated_smoother(
         out = iterated_reverse_markov_smoother(observations, lp, lt, lo, init_rev_posterior, **kw)
     elif direction == "hybrid":
         init_rev_posterior = initialize_reverse_with_forward(init_fwd_posterior)
-        out = iterated_two_filter_smoother(observations, lp, lt, lo, init_fwd_posterior, init_rev_posterior, **kw)
+        out = iterated_hybrid_markov_smoother(observations, lp, lt, lo, init_fwd_posterior, init_rev_posterior, **kw)
     else:
         raise ValueError(direction)
     if return_history:
