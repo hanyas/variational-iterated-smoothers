@@ -1,10 +1,10 @@
 import jax
 import numpy as np
 
-from varsmooth.approximation import gauss_hermite_quadratization as quadratize
-from varsmooth.approximation.fourier_hermite import get_log_observation
-from varsmooth.approximation.fourier_hermite import get_log_prior
-from varsmooth.approximation.fourier_hermite import get_log_transition
+from varsmooth.approximation import gauss_hermite_linearization as linearize
+from varsmooth.approximation.linearization import get_log_observation
+from varsmooth.approximation.linearization import get_log_prior
+from varsmooth.approximation.linearization import get_log_transition
 from varsmooth.environments.linear_gaussian import get_data
 from varsmooth.environments.linear_gaussian import make_parameters
 from varsmooth.environments.linear_gaussian import make_random_system
@@ -14,8 +14,8 @@ from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.forward_markov import std_forward_message
 from varsmooth.smoothers.rts_kalman import rts_smoother
-from varsmooth.smoothers.two_filter import iterated_two_filter_smoother
-from varsmooth.smoothers.two_filter import two_filter_smoother
+from varsmooth.smoothers.hybrid_markov import iterated_hybrid_markov_smoother
+from varsmooth.smoothers.hybrid_markov import hybrid_markov_smoother
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
 
 jax.config.update("jax_enable_x64", True)
@@ -73,12 +73,12 @@ init_fwd_posterior = GaussMarkov(
 
 init_rvs_posterior = initialize_reverse_with_forward(init_fwd_posterior)
 
-log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
-log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
+log_prior_fn = lambda q: get_log_prior(prior_dist, q, linearize)
+log_transition_fn = lambda q, _: get_log_transition(transition_model, q, linearize)
+log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, linearize)
 
 # single iteration with no damping
-var_marginals = two_filter_smoother(
+var_marginals = hybrid_markov_smoother(
     observations=ys,
     log_prior_fn=log_prior_fn,
     log_transition_fn=log_transition_fn,
@@ -92,7 +92,7 @@ np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, at
 np.testing.assert_allclose(rts_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)
 
 # single iteration maximum damping
-var_marginals = two_filter_smoother(
+var_marginals = hybrid_markov_smoother(
     observations=ys,
     log_prior_fn=log_prior_fn,
     log_transition_fn=log_transition_fn,
@@ -106,7 +106,7 @@ init_marginals = std_forward_message(init_fwd_posterior)
 np.testing.assert_allclose(init_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)
 np.testing.assert_allclose(init_marginals.cov, var_marginals.cov, rtol=1e-3, atol=1e-3)
 
-var_marginals = iterated_two_filter_smoother(
+var_marginals = iterated_hybrid_markov_smoother(
     observations=ys,
     log_prior_fn=log_prior_fn,
     log_transition_fn=log_transition_fn,
@@ -114,7 +114,7 @@ var_marginals = iterated_two_filter_smoother(
     init_forward_posterior=init_fwd_posterior,
     init_reverse_posterior=init_rvs_posterior,
     kl_constraint=100,
-    init_temperature=1e8,
+    init_temperature=1e6,
 )
 
 np.testing.assert_allclose(rts_marginals.mean, var_marginals.mean, rtol=1e-3, atol=1e-3)

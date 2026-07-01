@@ -13,7 +13,7 @@ from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
-from varsmooth.smoothers.two_filter import iterated_two_filter_smoother
+from varsmooth.smoothers.hybrid_markov import iterated_hybrid_markov_smoother
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
 
 jax.config.update("jax_platform_name", "cpu")
@@ -26,7 +26,7 @@ sigma0 = 0.36  # stationary (prior) variance
 beta = 1.0  # observation gain
 r = 1.0  # observation noise (stddev)
 
-nb_steps = 1024  # number of observations
+nb_steps = 4096  # number of observations
 dim_x, dim_y = 1, 1
 
 rng = np.random.RandomState(23)
@@ -65,7 +65,7 @@ log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
 log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
 log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
 
-marginals = iterated_two_filter_smoother(
+marginals = iterated_hybrid_markov_smoother(
     observations=jnp.array(observations),
     log_prior_fn=log_prior_fn,
     log_transition_fn=log_transition_fn,
@@ -73,7 +73,7 @@ marginals = iterated_two_filter_smoother(
     init_forward_posterior=init_fwd_posterior,
     init_reverse_posterior=init_rvs_posterior,
     kl_constraint=10,
-    init_temperature=1e6,
+    init_temperature=1e12,
 )
 
 ts = np.arange(nb_steps + 1)

@@ -14,7 +14,7 @@ from varsmooth.objects import AffineGaussian
 from varsmooth.objects import ConditionalMomentsModel
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
-from varsmooth.smoothers.two_filter import iterated_two_filter_smoother
+from varsmooth.smoothers.hybrid_markov import iterated_hybrid_markov_smoother
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
 
 jax.config.update("jax_platform_name", "cpu")
@@ -65,7 +65,7 @@ log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
 log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
 log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
 
-marginals = iterated_two_filter_smoother(
+marginals = iterated_hybrid_markov_smoother(
     observations=jnp.array(observations),
     log_prior_fn=log_prior_fn,
     log_transition_fn=log_transition_fn,

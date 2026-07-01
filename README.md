@@ -20,7 +20,7 @@ The library provides three variational smoothers (`varsmooth/smoothers/`):
 
 - `forward_markov` — forward Gauss–Markov parameterization.
 - `reverse_markov` — reverse Gauss–Markov parameterization.
-- `two_filter` — combined forward/reverse (two-filter) smoother.
+- `hybrid_markov` — forward/reverse (hybrid-Markov) smoother.
 
 Each is available as a single-pass smoother, an undamped iterated smoother, and a KL-constrained iterated smoother with a temperature-based line search.
 
@@ -35,10 +35,10 @@ Single-run demonstrations live under `examples/`, one directory per model family
 - `cubic_sensor` — scalar AR(1) state observed through a cubic sensor (Katayama, 2013).
 - `stoch_volatility` — univariate stochastic-volatility model.
 
-Each script selects a smoother and an approximation: the prefix is `pl_` (posterior linearization) or `fh_` (Fourier–Hermite), and the suffix is `_forward`, `_reverse`, or `_two_filt`. Available combinations vary by model. For example:
+Each script selects a smoother and an approximation: the prefix is `pl_` (posterior linearization) or `fh_` (Fourier–Hermite), and the suffix is `_forward`, `_reverse`, or `_hybrid`. Available combinations vary by model. For example:
 
 ```bash
-python examples/linear_gaussian/fh_two_filt.py
+python examples/linear_gaussian/fh_hybrid.py
 python examples/bearing_only/pl_reverse.py
 ```
 

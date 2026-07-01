@@ -1,7 +1,6 @@
 from .forward_markov import forward_markov_smoother
-from .reverse_markov import reverse_markov_smoother
-from .two_filter import two_filter_smoother
-
 from .forward_markov import iterated_forward_markov_smoother
+from .hybrid_markov import hybrid_markov_smoother
+from .hybrid_markov import iterated_hybrid_markov_smoother
 from .reverse_markov import iterated_reverse_markov_smoother
-from .two_filter import iterated_two_filter_smoother
+from .reverse_markov import reverse_markov_smoother

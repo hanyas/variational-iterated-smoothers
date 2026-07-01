@@ -26,7 +26,7 @@ from varsmooth.utils import none_or_concat
 from varsmooth.utils import none_or_shift
 
 
-def two_filter_smoother(
+def hybrid_markov_smoother(
     observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
@@ -132,7 +132,7 @@ def update_marginals(
         "return_history",
     ],
 )
-def iterated_two_filter_smoother(
+def iterated_hybrid_markov_smoother(
     observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
@@ -146,7 +146,7 @@ def iterated_two_filter_smoother(
     return_history: bool = False,
 ):
     """
-    Iterated two-filter smoother with early stopping based on temperature.
+    Iterated hybrid-markov smoother with early stopping based on temperature.
 
     Args:
         observations:
@@ -176,7 +176,7 @@ def iterated_two_filter_smoother(
 
     def single_iteration(carry, iteration_idx):
         """
-        Perform a single iteration of the two-filter update.
+        Perform a single iteration of the hybrid-markov update.
 
         Args:
             carry: Tuple of (reference_marginals, forward_reference, reverse_reference)
