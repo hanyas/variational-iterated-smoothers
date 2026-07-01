@@ -7,7 +7,6 @@ Outputs:
 
 from pathlib import Path
 
-import jax.numpy as jnp
 import matplotlib
 import numpy as np
 
@@ -16,26 +15,10 @@ import lg_common as lg
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.pyplot as plt
 
-from varsmooth.objects import Gaussian
 from varsmooth.smoothers.utils import std_forward_message
 
 OUTDIR = Path(__file__).resolve().parent / "outputs"
 OUTDIR.mkdir(exist_ok=True)
-
-
-def make_smooth_system(rho=0.985, theta=0.16, q=0.05, r=0.25, r0=4.0):
-    c, s = np.cos(theta), np.sin(theta)
-
-    A = rho * np.array([[c, -s], [s, c]])
-    b = np.zeros(2)
-    Omega = (q**2) * np.eye(2)
-
-    H = np.eye(2)
-    e = np.zeros(2)
-    Delta = (r**2) * np.eye(2)
-
-    prior = Gaussian(jnp.asarray([r0, 0.0]), jnp.asarray(0.01 * np.eye(2)))
-    return lg.LGSystem(prior, A, b, Omega, H, e, Delta)
 
 
 def main():
@@ -44,7 +27,7 @@ def main():
 
     betas = np.concatenate([np.linspace(0.0, 0.9, 19), [0.95, 0.99, 0.999, 0.9999]])
 
-    system = make_smooth_system()
+    system = lg.make_linear_system()
     _, ys = lg.simulate_data(system, num_steps, np.random.RandomState(data_seed))
     rts = lg.rts_marginals(system, ys)
 
@@ -60,7 +43,7 @@ def main():
             model_fns=fns,
             observations=ys,
             system=system,
-            num_steps=num_steps,
+            nb_steps=num_steps,
             temperature=temperature,
             init_kwargs=init_post_kwargs,
         )

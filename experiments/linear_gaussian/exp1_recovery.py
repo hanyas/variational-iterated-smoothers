@@ -18,13 +18,12 @@ DIRECTIONS = ("forward", "reverse", "hybrid")
 
 
 def main():
-    dim_x, dim_y, num_steps = 3, 2, 100
+    num_steps = 100
 
     num_trials = 10
-    system_seed = 0
     data_seeds = range(1, num_trials + 1)
 
-    system = lg.make_lg_system(dim_x, dim_y, np.random.RandomState(system_seed))
+    system = lg.make_linear_system()
     model_fns = {combo: lg.make_model_fns(system, *combo) for combo in BACKENDS}
 
     results = []

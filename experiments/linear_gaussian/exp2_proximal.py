@@ -31,14 +31,14 @@ def _truncate(history, pad=1):
 
 
 def main():
-    dim_x, dim_y, num_steps = 3, 2, 100
+    num_steps = 100
 
-    system_seed, data_seed = 0, 1
-    kl_steps = [50.0, 100.0, 200.0, 400.0, 800.0, 1600.0, 3200.0]
+    data_seed = 1
+    kl_steps = [5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0]
 
     max_iter = 70
 
-    system = lg.make_lg_system(dim_x, dim_y, np.random.RandomState(system_seed))
+    system = lg.make_linear_system()
     _, ys = lg.simulate_data(system, num_steps, np.random.RandomState(data_seed))
     rts = lg.rts_marginals(system, ys)
 

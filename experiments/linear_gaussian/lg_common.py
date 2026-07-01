@@ -20,22 +20,21 @@ from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.smoothers.forward_markov import forward_markov_smoother
 from varsmooth.smoothers.forward_markov import log_evidence as fwd_log_evidence
+from varsmooth.smoothers.hybrid_markov import hybrid_markov_smoother
 from varsmooth.smoothers.reverse_markov import log_evidence as rev_log_evidence
 from varsmooth.smoothers.reverse_markov import reverse_markov_smoother
 from varsmooth.smoothers.rts_kalman import rts_smoother
-from varsmooth.smoothers.hybrid_markov import hybrid_markov_smoother
 from varsmooth.smoothers.utils import statistical_expansion
 from varsmooth.smoothers.utils import std_backward_message
 from varsmooth.smoothers.utils import std_forward_message
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import common
-from common import DIRECTIONS
 from common import FH_BACKENDS
 from common import GSLR_BACKENDS
 from common import avg_kl
-from common import get_markov_history
 from common import get_marginals
+from common import get_markov_history
 from common import make_forward_init
 from common import make_reverse_init
 from common import rmse
@@ -54,6 +53,21 @@ LGSystem = namedtuple("LGSystem", ["prior", "A", "b", "Omega", "H", "e", "Delta"
 def make_lg_system(dim_x, dim_y, rng, transition_scale=0.9):
     mu0, P0, A, b, Omega, H, e, Delta = lg_env.make_random_system(dim_x, dim_y, rng, transition_scale)
     return LGSystem(Gaussian(jnp.asarray(mu0), jnp.asarray(P0)), A, b, Omega, H, e, Delta)
+
+
+def make_linear_system(rho=0.985, theta=0.16, q=0.05, r=0.25, r0=4.0):
+    c, s = np.cos(theta), np.sin(theta)
+
+    A = rho * np.array([[c, -s], [s, c]])
+    b = np.zeros(2)
+    Omega = (q**2) * np.eye(2)
+
+    H = np.eye(2)
+    e = np.zeros(2)
+    Delta = (r**2) * np.eye(2)
+
+    prior = Gaussian(jnp.asarray([r0, 0.0]), jnp.asarray(0.01 * np.eye(2)))
+    return LGSystem(prior, A, b, Omega, H, e, Delta)
 
 
 def simulate_data(system, nb_steps, rng):
