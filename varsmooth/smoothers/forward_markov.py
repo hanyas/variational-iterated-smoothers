@@ -1,12 +1,7 @@
 from typing import Tuple
 
-import jax
 from jax import Array
-from jax import numpy as jnp
-from jax import scipy as jsc
 
-from varsmooth.objects import AffineGaussian
-from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.objects import LogMarginalNorm
 from varsmooth.objects import LogMessage
@@ -15,12 +10,9 @@ from varsmooth.objects import LogPrior
 from varsmooth.objects import LogTransition
 from varsmooth.objects import ValueFn
 from varsmooth.smoothers.core import make_smoother_suite
+from varsmooth.smoothers.utils import _log_message_pass
 from varsmooth.smoothers.utils import kl_between_forward_gauss_markovs
 from varsmooth.smoothers.utils import std_forward_message
-from varsmooth.utils import none_or_concat
-from varsmooth.utils import none_or_idx
-from varsmooth.utils import none_or_shift
-from varsmooth.utils import symmetrize
 
 
 def log_backward_message(
@@ -30,143 +22,45 @@ def log_backward_message(
     forward_reference: GaussMarkov,
     damping: float,
 ) -> Tuple[GaussMarkov, LogMarginalNorm, ValueFn, LogMessage, Array]:
+    """Backward message pass of the forward Gauss-Markov smoother.
 
-    def _backward_step(carry, args):
-        R, r, rho = carry
-        C11, C12, C21, C22, c1, c2, kappa, L, l, nu, F, d, Sigma = args
+    Eliminates the future state of every pairwise log-transition, accumulating
+    a backward value function from the leaf to the root. Thin wrapper over the
+    shared _log_message_pass with reverse=True.
 
-        dim = Sigma.shape[0]
-        # Factor the kernel covariance once and reuse it for every Sigma-solve.
-        chol_Sigma = jsc.linalg.cho_factor(Sigma)
-        iSig = jsc.linalg.cho_solve(chol_Sigma, jnp.eye(dim))
-        iSig_F = jsc.linalg.cho_solve(chol_Sigma, F)
-        iSig_d = jsc.linalg.cho_solve(chol_Sigma, d)
-        logdet_Sigma = 2.0 * jnp.sum(jnp.log(jnp.diag(chol_Sigma[0])))
+    Args:
+        log_prior: LogPrior
+            Quadratic log-prior over the root state x_0.
+        log_transition: LogTransition
+            Batched pairwise quadratic log-transitions of leading shape (T,).
+        log_observation: LogObservation
+            Batched quadratic log-observations of leading shape (T,).
+        forward_reference: GaussMarkov
+            The forward Gauss-Markov posterior to expand around.
+        damping: float
+            Trust-region damping in [0, 1); damping = t / (1 + t).
 
-        G11 = (1.0 - damping) * (C11 + R) + damping * iSig
-        G22 = (1.0 - damping) * C22 + damping * F.T @ iSig_F
-        G12 = (1.0 - damping) * C12 + damping * iSig_F
-        g1 = (1.0 - damping) * (c1 + r) + damping * iSig_d
-        g2 = (1.0 - damping) * c2 - damping * F.T @ iSig_d
-        theta = (
-            (1.0 - damping) * (kappa + rho)
-            - 0.5 * damping * (dim * jnp.log(2 * jnp.pi) + logdet_Sigma)
-            - 0.5 * damping * d.T @ iSig_d
-        )
-
-        G11 = symmetrize(G11)
-        G22 = symmetrize(G22)
-
-        # Feasibility via a Cholesky attempt: non-PD G11 yields a non-finite factor.
-        chol_G11 = jnp.linalg.cholesky(G11)
-        pd_G11 = jnp.all(jnp.isfinite(chol_G11))
-
-        def _feasible_backward_pass():
-            iG11_G12 = jsc.linalg.cho_solve((chol_G11, True), G12)
-            iG11_g1 = jsc.linalg.cho_solve((chol_G11, True), g1)
-            Sigma = jsc.linalg.cho_solve((chol_G11, True), jnp.eye(dim))
-            logdet_G11 = 2.0 * jnp.sum(jnp.log(jnp.diag(chol_G11)))
-
-            S = G22 - G12.T @ iG11_G12
-            s = g2 + G12.T @ iG11_g1
-            xi = theta + 0.5 * (dim * jnp.log(2 * jnp.pi) - logdet_G11) + 0.5 * g1.T @ iG11_g1
-
-            F = iG11_G12
-            d = iG11_g1
-
-            R = L + 1.0 / (1.0 - damping) * S
-            r = l + 1.0 / (1.0 - damping) * s
-            rho = nu + 1.0 / (1.0 - damping) * xi
-
-            value_fn = ValueFn(R, r, rho)
-            return value_fn, (value_fn, AffineGaussian(F, d, Sigma), LogMessage(S, s, xi), True)  # feasible
-
-        def _not_feasible_backward_pass():
-            S = jnp.zeros_like(G22)
-            s = jnp.zeros_like(g2)
-            xi = jnp.zeros_like(theta)
-
-            R = jnp.zeros_like(L)
-            r = jnp.zeros_like(l)
-            rho = jnp.zeros_like(nu)
-
-            value_fn = ValueFn(R, r, rho)
-            return value_fn, (value_fn, AffineGaussian(F, d, Sigma), LogMessage(S, s, xi), False)  # Not feasible
-
-        return jax.lax.cond(
-            pred=pd_G11,
-            true_fun=_feasible_backward_pass,
-            false_fun=_not_feasible_backward_pass,
-        )
-
-    last_log_obs = none_or_idx(log_observation, -1)
-    last_value_fn = ValueFn(R=last_log_obs.L, r=last_log_obs.l, rho=last_log_obs.nu)
-
-    log_aux_obs = none_or_concat(
-        none_or_shift(log_observation, -1),
-        LogObservation(log_prior.L, log_prior.l, log_prior.nu),
-        1,
-    )
-
-    nominal_marginal, nominal_kernels = forward_reference
-
-    first_value_fn, (value_fns, kernels, log_bwd_msgs, feasible_flags) = jax.lax.scan(
-        f=_backward_step,
-        init=last_value_fn,
-        xs=(*log_transition, *log_aux_obs, *nominal_kernels),
+    Returns:
+        posterior: GaussMarkov
+            The updated forward Gauss-Markov posterior (root marginal + forward
+            kernels).
+        log_marg_norm: LogMarginalNorm
+            The quadratic marginal log-normalizer at the root.
+        value_fns: ValueFn
+            The per-marginal backward value functions of leading shape (T + 1,).
+        log_bwd_msgs: LogMessage
+            The per-step backward messages of leading shape (T,).
+        feasible_flags: Array
+            Boolean array of shape (T,) marking feasible steps.
+    """
+    return _log_message_pass(
+        log_prior,
+        log_transition,
+        log_observation,
+        forward_reference,
+        damping,
         reverse=True,
     )
-    value_fns = none_or_concat(value_fns, last_value_fn, -1)
-
-    R, r, rho = first_value_fn
-
-    m, P = nominal_marginal
-    dim = P.shape[0]
-    chol_P = jsc.linalg.cho_factor(P)
-    inv_P = jsc.linalg.cho_solve(chol_P, jnp.eye(dim))
-    logdet_P = 2.0 * jnp.sum(jnp.log(jnp.diag(chol_P[0])))
-
-    J11 = (1.0 - damping) * R + damping * inv_P
-    J12 = damping * inv_P
-    J22 = damping * inv_P
-    j1 = (1.0 - damping) * r
-    j2 = jnp.zeros_like(j1)
-    tau = (1.0 - damping) * rho - 0.5 * damping * (dim * jnp.log(2 * jnp.pi) + logdet_P)
-
-    J11 = symmetrize(J11)
-    J22 = symmetrize(J22)
-
-    def _feasible_marginal():
-        chol_J11 = jsc.linalg.cho_factor(J11)
-        iJ11_J12 = jsc.linalg.cho_solve(chol_J11, J12)
-        iJ11_j1 = jsc.linalg.cho_solve(chol_J11, j1)
-        _P = jsc.linalg.cho_solve(chol_J11, jnp.eye(dim))
-        logdet_J11 = 2.0 * jnp.sum(jnp.log(jnp.diag(chol_J11[0])))
-
-        # init marginal
-        _m = jsc.linalg.cho_solve(chol_J11, j1 + J12 @ m)
-
-        # log normalizer
-        U = J22 - J12.T @ iJ11_J12
-        u = j2 - J12.T @ iJ11_j1
-        eta = tau + 0.5 * (dim * jnp.log(2 * jnp.pi) - logdet_J11) + 0.5 * j1.T @ iJ11_j1
-        return Gaussian(_m, _P), LogMarginalNorm(U, u, eta)
-
-    def _not_feasible_marginal():
-        _m = jnp.zeros_like(nominal_marginal.mean)
-        _P = jnp.zeros_like(nominal_marginal.cov)
-
-        U = jnp.zeros_like(J22)
-        u = jnp.zeros_like(j2)
-        eta = jnp.zeros_like(tau)
-        return Gaussian(_m, _P), LogMarginalNorm(U, u, eta)
-
-    marginal, log_marg_norm = jax.lax.cond(
-        pred=jnp.all(feasible_flags),
-        true_fun=_feasible_marginal,
-        false_fun=_not_feasible_marginal,
-    )
-    return (GaussMarkov(marginal, kernels), log_marg_norm, value_fns, log_bwd_msgs, feasible_flags)
 
 
 (
