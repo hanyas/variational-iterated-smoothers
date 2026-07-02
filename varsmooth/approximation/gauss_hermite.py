@@ -1,6 +1,6 @@
 from functools import partial
 import itertools
-from typing import Callable, Union
+from typing import Callable
 
 import jax
 from jax import Array
@@ -8,11 +8,8 @@ import jax.numpy as jnp
 from numpy.polynomial.hermite import hermgauss
 
 from varsmooth.approximation.sigma_points import SigmaPoints
-from varsmooth.approximation.sigma_points import linearize_additive
-from varsmooth.approximation.sigma_points import linearize_conditional
+from varsmooth.approximation.sigma_points import make_linearize
 from varsmooth.approximation.sigma_points import quadratize_any
-from varsmooth.objects import AdditiveGaussianModel
-from varsmooth.objects import ConditionalMomentsModel
 from varsmooth.objects import Gaussian
 
 
@@ -21,30 +18,24 @@ def quadratize(
     q: Gaussian,
     order: int = 3,
 ):
+    """Quadratize a scalar function under q with Gauss-Hermite cubature."""
     _get_sigma_points = lambda m, chol_P: get_sigma_points(m, chol_P, order)
     return quadratize_any(fun, q, _get_sigma_points)
 
 
 def linearize(
-    model: Union[AdditiveGaussianModel, ConditionalMomentsModel],
+    model,
     q: Gaussian,
     order: int = 3,
 ):
+    """Statistically linearize a model under q with Gauss-Hermite cubature."""
     _get_sigma_points = lambda m, chol_P: get_sigma_points(m, chol_P, order)
-
-    if isinstance(model, AdditiveGaussianModel):
-        fun, noise = model
-        return linearize_additive(fun, noise, q, _get_sigma_points)
-    elif isinstance(model, ConditionalMomentsModel):
-        mean_fn, covar_fn = model
-        return linearize_conditional(mean_fn, covar_fn, q, _get_sigma_points)
-    else:
-        raise NotImplementedError
+    return make_linearize(_get_sigma_points)(model, q)
 
 
 @partial(jax.jit, static_argnums=(2,))
 def get_sigma_points(m: Array, chol_P: Array, order: int) -> SigmaPoints:
-
+    """Return the order-point Gauss-Hermite sigma points for N(m, chol_P chol_P^T)."""
     nb_dim = m.shape[0]
     wm, wc, xi = _gauss_hermite_weights(nb_dim, order)
     sigma_points = m[None, :] + (chol_P @ xi).T

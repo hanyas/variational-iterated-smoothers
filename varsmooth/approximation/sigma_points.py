@@ -5,6 +5,8 @@ from jax import Array
 import jax.numpy as jnp
 from jax.scipy.linalg import cho_solve
 
+from varsmooth.objects import AdditiveGaussianModel
+from varsmooth.objects import ConditionalMomentsModel
 from varsmooth.objects import Gaussian
 
 
@@ -58,6 +60,30 @@ def linearize_conditional(cond_mean, cond_cov, q, get_sigma_points):
     Phi = get_cov(x_pts.wc, cm_pts, m_cm, cm_pts, m_cm)
     L = Phi - (F @ chol_x) @ (F @ chol_x).T + m_cc
     return F, m_cm - F @ m_x, L
+
+
+def make_linearize(get_sigma_points):
+    """Build a model-dispatching linearize from a sigma-point rule.
+
+    Args:
+        get_sigma_points: Callable
+            Sigma-point rule (m, chol_P) -> SigmaPoints for the chosen scheme.
+
+    Returns:
+        linearize: Callable
+            A function (model, q) -> (F, d, Sigma) that dispatches on the model
+            type (AdditiveGaussianModel or ConditionalMomentsModel) and raises
+            TypeError for anything else.
+    """
+
+    def linearize(model, q):
+        if isinstance(model, AdditiveGaussianModel):
+            return linearize_additive(model.fun, model.noise, q, get_sigma_points)
+        if isinstance(model, ConditionalMomentsModel):
+            return linearize_conditional(model.mean_fn, model.cov_fn, q, get_sigma_points)
+        raise TypeError(f"Unsupported model type: {type(model).__name__}")
+
+    return linearize
 
 
 def quadratize_any(f, q, get_sigma_points):
