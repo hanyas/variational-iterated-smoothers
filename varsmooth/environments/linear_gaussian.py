@@ -8,19 +8,19 @@ __all__ = ["make_parameters", "get_data", "make_random_system"]
 
 
 def _transition_function(x, A, b):
-    """Deterministic transition function used in the state space model
-    Parameters
-    ----------
-    x: array_like
-        The current state
-    A: array_like
-        The transition matrix
-    b: array_like
-        The transition offset
-    Returns
-    -------
-    out: array_like
-        The transitioned state
+    """Deterministic transition function used in the state space model.
+
+    Args:
+        x: array_like
+            The current state
+        A: array_like
+            The transition matrix
+        b: array_like
+            The transition offset
+
+    Returns:
+        array_like
+            The transitioned state
     """
     return A @ x + b
 
@@ -29,26 +29,25 @@ def _transition_function_dx(x, A, b):
     return A
 
 
-def _observation_function(x, H, e):
-    """
-    Returns the linear observation as a function of the state
-    Parameters
-    ----------
-    x: array_like
-        The current state
-    H: array_like
-        The observation matrix
-    e: array_like
-        The observation offset
-    Returns
-    -------
-    y: array_like
-        The linear observation H x + e
+def _likelihood_function(x, H, e):
+    """Returns the linear observation as a function of the state.
+
+    Args:
+        x: array_like
+            The current state
+        H: array_like
+            The observation matrix
+        e: array_like
+            The observation offset
+
+    Returns:
+        array_like
+            The linear observation H x + e
     """
     return H @ x + e
 
 
-def _observation_function_dx(x, H, e):
+def _likelihood_function_dx(x, H, e):
     return H
 
 
@@ -61,24 +60,24 @@ def _random_spd(dim, random_state, scale=1.0):
 def make_random_system(dim_x, dim_y, random_state=None, transition_scale=0.9):
     """Draw a stable linear-Gaussian system: a scale-shrunk identity transition with random offsets,
     noise covariances and prior.
-    Parameters
-    ----------
-    dim_x: int
-        State dimension
-    dim_y: int
-        Observation dimension
-    random_state: np.random.RandomState or int, optional
-        numpy random state
-    transition_scale: float
-        Scaling of the (identity) transition and observation matrices
-    Returns
-    -------
-    mu0, P0: array_like
-        The prior mean and covariance
-    A, b, Omega: array_like
-        The transition matrix, offset and covariance
-    H, e, Delta: array_like
-        The observation matrix, offset and covariance
+
+    Args:
+        dim_x: int
+            State dimension
+        dim_y: int
+            Observation dimension
+        random_state: np.random.RandomState or int, optional
+            numpy random state
+        transition_scale: float
+            Scaling of the (identity) transition and observation matrices
+
+    Returns:
+        mu0, P0: array_like
+            The prior mean and covariance
+        A, b, Omega: array_like
+            The transition matrix, offset and covariance
+        H, e, Delta: array_like
+            The observation matrix, offset and covariance
     """
     if random_state is None or isinstance(random_state, int):
         random_state = np.random.RandomState(random_state)
@@ -95,44 +94,45 @@ def make_random_system(dim_x, dim_y, random_state=None, transition_scale=0.9):
 
 def make_parameters(A, b, Omega, H, e, Delta):
     """Wraps a linear-Gaussian system into transition / observation functions.
+
         x_t | x_{t-1} ~ N(A x_{t-1} + b, Omega)
         y_t   | x_t   ~ N(H x_t + e, Delta)
-    Parameters
-    ----------
-    A, b, Omega: array_like
-        The transition matrix, offset and covariance
-    H, e, Delta: array_like
-        The observation matrix, offset and covariance
-    Returns
-    -------
-    Q: array_like
-        The transition covariance matrix (Omega)
-    R: array_like
-        The observation covariance matrix (Delta)
-    transition_function: callable
-        The transition function
-    observation_function: callable
-        The observation function
-    transition_function_dx: callable
-        The derivative of transition function
-    observation_function_dx: callable
-        The derivative of observation function
+
+    Args:
+        A, b, Omega: array_like
+            The transition matrix, offset and covariance
+        H, e, Delta: array_like
+            The observation matrix, offset and covariance
+
+    Returns:
+        Q: array_like
+            The transition covariance matrix (Omega)
+        R: array_like
+            The observation covariance matrix (Delta)
+        transition_function: callable
+            The transition function
+        likelihood_function: callable
+            The observation function
+        transition_function_dx: callable
+            The derivative of transition function
+        likelihood_function_dx: callable
+            The derivative of observation function
     """
     Q = jnp.asarray(Omega)
     R = jnp.asarray(Delta)
 
     transition_function = Partial(_transition_function, A=jnp.asarray(A), b=jnp.asarray(b))
-    observation_function = Partial(_observation_function, H=jnp.asarray(H), e=jnp.asarray(e))
+    likelihood_function = Partial(_likelihood_function, H=jnp.asarray(H), e=jnp.asarray(e))
     transition_function_dx = Partial(_transition_function_dx, A=jnp.asarray(A), b=jnp.asarray(b))
-    observation_function_dx = Partial(_observation_function_dx, H=jnp.asarray(H), e=jnp.asarray(e))
+    likelihood_function_dx = Partial(_likelihood_function_dx, H=jnp.asarray(H), e=jnp.asarray(e))
 
     return (
         Q,
         R,
         transition_function,
-        observation_function,
+        likelihood_function,
         transition_function_dx,
-        observation_function_dx,
+        likelihood_function_dx,
     )
 
 
@@ -145,27 +145,27 @@ def _get_data(x, A, b, chol_Omega, H, e, chol_Delta, state_noise, obs_noise, obs
 
 
 def get_data(x0, A, b, Omega, H, e, Delta, T, random_state=None):
-    """
-    Parameters
-    ----------
-    x0: array_like
-        true initial state
-    A, b, Omega: array_like
-        The transition matrix, offset and covariance
-    H, e, Delta: array_like
-        The observation matrix, offset and covariance
-    T: int
-        number of time steps
-    random_state: np.random.RandomState or int, optional
-        numpy random state
-    Returns
-    -------
-    ts: array_like
-        array of time steps
-    true_states: array_like
-        array of true states
-    observations: array_like
-        array of observations
+    """Simulate a linear-Gaussian trajectory and its observations.
+
+    Args:
+        x0: array_like
+            true initial state
+        A, b, Omega: array_like
+            The transition matrix, offset and covariance
+        H, e, Delta: array_like
+            The observation matrix, offset and covariance
+        T: int
+            number of time steps
+        random_state: np.random.RandomState or int, optional
+            numpy random state
+
+    Returns:
+        ts: array_like
+            array of time steps
+        true_states: array_like
+            array of true states
+        observations: array_like
+            array of observations
     """
     if random_state is None or isinstance(random_state, int):
         random_state = np.random.RandomState(random_state)

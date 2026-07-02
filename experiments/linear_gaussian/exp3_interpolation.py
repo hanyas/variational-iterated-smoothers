@@ -1,39 +1,36 @@
-"""Experiment 3 (LG): entropic-proximal beta-interpolation.
+"""Experiment 3 (LG): entropic-proximal beta-interpolation between the exact posterior and the init.
 
 Outputs:
-  outputs/fig_lg_interpolation.pdf       -- m_k[d] vs k, one subplot per coordinate
+  outputs/fig_lg_interpolation.pdf       -- smoothed mean m_k[d] vs k, one subplot per coordinate
   outputs/results_lg_interpolation.csv   -- the plotted trajectories
+
+Run from this directory: python exp3_interpolation.py
 """
 
-from pathlib import Path
-
-import matplotlib
-import numpy as np
-
-matplotlib.use("Agg")
 import lg_common as lg
-from matplotlib.colors import LinearSegmentedColormap
-import matplotlib.pyplot as plt
+import numpy as np
 
 from varsmooth.smoothers.utils import std_forward_message
 
-OUTDIR = Path(__file__).resolve().parent / "outputs"
-OUTDIR.mkdir(exist_ok=True)
-
 
 def main():
+    from matplotlib.colors import LinearSegmentedColormap
+    import matplotlib.pyplot as plt
+
+    # ---- config ----
     dim_x, num_steps = 2, 100
     data_seed = 1
-
     betas = np.concatenate([np.linspace(0.0, 0.9, 19), [0.95, 0.99, 0.999, 0.9999]])
 
+    # ---- data ----
     system = lg.make_linear_system()
     _, ys = lg.simulate_data(system, num_steps, np.random.RandomState(data_seed))
     rts = lg.rts_marginals(system, ys)
 
+    # ---- run ----
     fns = lg.make_model_fns(system, "GSLR", "gauss_hermite")
-    init_post_kwargs = dict(F_scale=0.1, Sigma_scale=1.0)
-    q_init = std_forward_message(lg.make_forward_init(system, num_steps, **init_post_kwargs))
+    init = lg.make_forward_init(system, num_steps, F_scale=0.1, Sigma_scale=1.0)
+    q_init = std_forward_message(init)  # same init object feeds every beta below
 
     q_betas, kl_to_rts, kl_to_init = [], [], []
     for beta in betas:
@@ -42,10 +39,8 @@ def main():
             direction="forward",
             model_fns=fns,
             observations=ys,
-            system=system,
-            nb_steps=num_steps,
+            init_fwd_posterior=init,
             temperature=temperature,
-            init_kwargs=init_post_kwargs,
         )
         q_betas.append(q)
         kl_to_rts.append(lg.avg_kl(q, rts))
@@ -54,6 +49,7 @@ def main():
     print(f"  beta=0   : KL->RTS={max(kl_to_rts[0], 1e-18):.2e}  KL->init={kl_to_init[0]:.2e}")
     print(f"  beta=1-  : KL->RTS={kl_to_rts[-1]:.2e}  KL->init={max(kl_to_init[-1], 1e-18):.2e}")
 
+    # ---- report (figures + csv) ----
     lg.set_style()
     ks = np.arange(num_steps + 1)
     greys = LinearSegmentedColormap.from_list("grey_seq", plt.cm.gray(np.linspace(0.08, 0.72, 256)))
@@ -72,8 +68,7 @@ def main():
     cb = fig.colorbar(sm, ax=axes, fraction=0.046, pad=0.02)
     cb.set_label(r"damping $\beta$")
     fig.suptitle(r"Geometric $\beta$-interpolation: exact posterior $\leftrightarrow$ init")
-    fig.savefig(OUTDIR / "fig_lg_interpolation.pdf", bbox_inches="tight")
-    plt.close(fig)
+    lg.save_fig(fig, "fig_lg_interpolation.pdf")
 
     rows = []
     for bi, (beta, q) in enumerate(zip(betas, q_betas)):
@@ -84,7 +79,7 @@ def main():
         m = np.asarray(ref.mean)
         for k in ks:
             rows.append(dict(series=series, bi=-1, beta="", k=int(k), m0=float(m[k, 0]), m1=float(m[k, 1])))
-    lg.write_csv(OUTDIR / "results_lg_interpolation.csv", rows)
+    lg.write_csv(lg.OUTPUT_DIR / "results_lg_interpolation.csv", rows)
 
 
 if __name__ == "__main__":

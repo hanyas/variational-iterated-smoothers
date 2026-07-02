@@ -42,11 +42,11 @@ def transition_cov(x):
     return jnp.array([[0.3**2]])
 
 
-def observation_mean(x, gamma):
+def likelihood_mean(x, gamma):
     return gamma * jnp.exp(x)
 
 
-def observation_cov(x, gamma):
+def likelihood_cov(x, gamma):
     return (gamma * jnp.exp(x)).reshape(1, 1)
 
 

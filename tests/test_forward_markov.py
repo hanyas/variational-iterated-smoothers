@@ -4,13 +4,21 @@ import pytest
 
 from tests.lgssm import simulate
 from tests.test_utils import generate_system
+from varsmooth.approximation import gauss_hermite_linearization as linearize
+from varsmooth.approximation import gauss_hermite_quadratization as quadratize
+from varsmooth.approximation.fourier_hermite import get_log_likelihood as fh_get_log_likelihood
+from varsmooth.approximation.fourier_hermite import get_log_prior as fh_get_log_prior
+from varsmooth.approximation.fourier_hermite import get_log_transition as fh_get_log_transition
+from varsmooth.approximation.linearization import get_log_likelihood as pl_get_log_likelihood
+from varsmooth.approximation.linearization import get_log_prior as pl_get_log_prior
+from varsmooth.approximation.linearization import get_log_transition as pl_get_log_transition
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.forward_markov import forward_markov_smoother
-from varsmooth.smoothers.forward_markov import std_forward_message
 from varsmooth.smoothers.rts_kalman import rts_smoother
+from varsmooth.smoothers.utils import std_forward_message
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -26,34 +34,29 @@ def config():
 @pytest.mark.parametrize("seed", [0, 13, 42])
 def test_pl_fwd_smoother(dim_x, dim_y, seed):
 
-    from varsmooth.approximation import gauss_hermite_linearization as linearize
-    from varsmooth.approximation.linearization import get_log_observation
-    from varsmooth.approximation.linearization import get_log_prior
-    from varsmooth.approximation.linearization import get_log_transition
-
     np.random.seed(seed)
 
-    nb_steps = 100
+    num_steps = 100
 
     prior_dist, A, b, Omega, _ = generate_system(dim_x, dim_x)
     transition_model = AdditiveGaussianModel(lambda x: A @ x + b, Gaussian(np.zeros((dim_x,)), Omega))
 
     _, H, e, Delta, _ = generate_system(dim_x, dim_y)
-    observation_model = AdditiveGaussianModel(lambda x: H @ x + e, Gaussian(np.zeros((dim_y,)), Delta))
+    likelihood_model = AdditiveGaussianModel(lambda x: H @ x + e, Gaussian(np.zeros((dim_y,)), Delta))
 
-    xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps)
+    xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, num_steps)
     rts_marginals = rts_smoother(
         observations=ys,
         prior_dist=prior_dist,
         linear_transition=AffineGaussian(
-            np.repeat([A], nb_steps, axis=0),
-            np.repeat([b], nb_steps, axis=0),
-            np.repeat([Omega], nb_steps, axis=0),
+            np.repeat([A], num_steps, axis=0),
+            np.repeat([b], num_steps, axis=0),
+            np.repeat([Omega], num_steps, axis=0),
         ),
-        linear_observation=AffineGaussian(
-            np.repeat([H], nb_steps, axis=0),
-            np.repeat([e], nb_steps, axis=0),
-            np.repeat([Delta], nb_steps, axis=0),
+        linear_likelihood=AffineGaussian(
+            np.repeat([H], num_steps, axis=0),
+            np.repeat([e], num_steps, axis=0),
+            np.repeat([Delta], num_steps, axis=0),
         ),
     )
 
@@ -64,18 +67,18 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
     init_posterior = GaussMarkov(
         marginal=prior_dist,
         kernels=AffineGaussian(
-            np.repeat([F], nb_steps, axis=0),
-            np.repeat([d], nb_steps, axis=0),
-            np.repeat([Sigma], nb_steps, axis=0),
+            np.repeat([F], num_steps, axis=0),
+            np.repeat([d], num_steps, axis=0),
+            np.repeat([Sigma], num_steps, axis=0),
         ),
     )
 
-    log_prior_fn = lambda q: get_log_prior(prior_dist, q, linearize)
-    log_transition_fn = lambda q, _: get_log_transition(transition_model, q, linearize)
-    log_observation_fn = lambda y, q: get_log_observation(ys, observation_model, q, linearize)
+    log_prior_fn = lambda q: pl_get_log_prior(prior_dist, q, linearize)
+    log_transition_fn = lambda q, _: pl_get_log_transition(transition_model, q, linearize)
+    log_likelihood_fn = lambda y, q: pl_get_log_likelihood(ys, likelihood_model, q, linearize)
 
     forward_markov = forward_markov_smoother(
-        ys, log_prior_fn, log_transition_fn, log_observation_fn, init_posterior, 0.0
+        ys, log_prior_fn, log_transition_fn, log_likelihood_fn, init_posterior, 0.0
     )
     var_marginals = std_forward_message(forward_markov)
 
@@ -88,34 +91,29 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
 @pytest.mark.parametrize("seed", [0, 13, 42])
 def test_fh_fwd_smoother(dim_x, dim_y, seed):
 
-    from varsmooth.approximation import gauss_hermite_quadratization as quadratize
-    from varsmooth.approximation.fourier_hermite import get_log_observation
-    from varsmooth.approximation.fourier_hermite import get_log_prior
-    from varsmooth.approximation.fourier_hermite import get_log_transition
-
     np.random.seed(seed)
 
-    nb_steps = 100
+    num_steps = 100
 
     prior_dist, A, b, Omega, _ = generate_system(dim_x, dim_x)
     transition_model = AdditiveGaussianModel(lambda x: A @ x + b, Gaussian(np.zeros((dim_x,)), Omega))
 
     _, H, e, Delta, _ = generate_system(dim_x, dim_y)
-    observation_model = AdditiveGaussianModel(lambda x: H @ x + e, Gaussian(np.zeros((dim_y,)), Delta))
+    likelihood_model = AdditiveGaussianModel(lambda x: H @ x + e, Gaussian(np.zeros((dim_y,)), Delta))
 
-    xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps)
+    xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, num_steps)
     rts_marginals = rts_smoother(
         observations=ys,
         prior_dist=prior_dist,
         linear_transition=AffineGaussian(
-            np.repeat([A], nb_steps, axis=0),
-            np.repeat([b], nb_steps, axis=0),
-            np.repeat([Omega], nb_steps, axis=0),
+            np.repeat([A], num_steps, axis=0),
+            np.repeat([b], num_steps, axis=0),
+            np.repeat([Omega], num_steps, axis=0),
         ),
-        linear_observation=AffineGaussian(
-            np.repeat([H], nb_steps, axis=0),
-            np.repeat([e], nb_steps, axis=0),
-            np.repeat([Delta], nb_steps, axis=0),
+        linear_likelihood=AffineGaussian(
+            np.repeat([H], num_steps, axis=0),
+            np.repeat([e], num_steps, axis=0),
+            np.repeat([Delta], num_steps, axis=0),
         ),
     )
 
@@ -126,18 +124,18 @@ def test_fh_fwd_smoother(dim_x, dim_y, seed):
     init_posterior = GaussMarkov(
         marginal=prior_dist,
         kernels=AffineGaussian(
-            np.repeat([F], nb_steps, axis=0),
-            np.repeat([d], nb_steps, axis=0),
-            np.repeat([Sigma], nb_steps, axis=0),
+            np.repeat([F], num_steps, axis=0),
+            np.repeat([d], num_steps, axis=0),
+            np.repeat([Sigma], num_steps, axis=0),
         ),
     )
 
-    log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
-    log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
-    log_observation_fn = lambda y, q: get_log_observation(ys, observation_model, q, quadratize)
+    log_prior_fn = lambda q: fh_get_log_prior(prior_dist, q, quadratize)
+    log_transition_fn = lambda q, p: fh_get_log_transition(transition_model, q, p, quadratize)
+    log_likelihood_fn = lambda y, q: fh_get_log_likelihood(ys, likelihood_model, q, quadratize)
 
     forward_markov = forward_markov_smoother(
-        ys, log_prior_fn, log_transition_fn, log_observation_fn, init_posterior, 0.0
+        ys, log_prior_fn, log_transition_fn, log_likelihood_fn, init_posterior, 0.0
     )
     var_marginals = std_forward_message(forward_markov)
 

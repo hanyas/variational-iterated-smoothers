@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from varsmooth.approximation import gauss_hermite_quadratization as quadratize
-from varsmooth.approximation.fourier_hermite import get_log_observation
+from varsmooth.approximation.fourier_hermite import get_log_likelihood
 from varsmooth.approximation.fourier_hermite import get_log_prior
 from varsmooth.approximation.fourier_hermite import get_log_transition
 from varsmooth.environments.stoch_volatility import get_data
@@ -25,22 +25,22 @@ mu = -0.5  # long-run mean log-volatility
 phi = 0.98  # autoregressive persistence
 sigma = 0.16  # transition noise std
 
-nb_steps = 1024  # number of observations
+num_steps = 1024  # number of observations
 dim_x, dim_y = 1, 1
 
 p0 = sigma**2 / (1.0 - phi**2)  # prior variance
 rng = np.random.RandomState(23)
 x0 = mu + np.sqrt(p0) * rng.randn()
-_, true_states, observations = get_data(x0, mu, phi, sigma, nb_steps, random_state=rng)
-transition_cov, observation_cov, transition_fn, observation_fn, _, _ = make_parameters(mu, phi, sigma)
+_, true_states, observations = get_data(x0, mu, phi, sigma, num_steps, random_state=rng)
+transition_cov, likelihood_cov, transition_fn, likelihood_fn, _, _ = make_parameters(mu, phi, sigma)
 
 transition_model = AdditiveGaussianModel(
     fun=transition_fn,
     noise=Gaussian(jnp.zeros((dim_x,)), transition_cov),
 )
-observation_model = ConditionalMomentsModel(
-    mean_fn=observation_fn,
-    cov_fn=observation_cov,
+likelihood_model = ConditionalMomentsModel(
+    mean_fn=likelihood_fn,
+    cov_fn=likelihood_cov,
 )
 prior_dist = Gaussian(
     mean=jnp.array([mu]),
@@ -54,29 +54,29 @@ Sigma = 1.0 * np.eye(dim_x)
 init_fwd_posterior = GaussMarkov(
     marginal=prior_dist,
     kernels=AffineGaussian(
-        F=np.repeat([F], nb_steps, axis=0),
-        d=np.repeat([d], nb_steps, axis=0),
-        Sigma=np.repeat([Sigma], nb_steps, axis=0),
+        F=np.repeat([F], num_steps, axis=0),
+        d=np.repeat([d], num_steps, axis=0),
+        Sigma=np.repeat([Sigma], num_steps, axis=0),
     ),
 )
 init_rvs_posterior = initialize_reverse_with_forward(init_fwd_posterior)
 
 log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
 log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
+log_likelihood_fn = lambda y, q: get_log_likelihood(y, likelihood_model, q, quadratize)
 
 marginals = iterated_hybrid_markov_smoother(
     observations=jnp.array(observations),
     log_prior_fn=log_prior_fn,
     log_transition_fn=log_transition_fn,
-    log_observation_fn=log_observation_fn,
+    log_likelihood_fn=log_likelihood_fn,
     init_forward_posterior=init_fwd_posterior,
     init_reverse_posterior=init_rvs_posterior,
     kl_constraint=10,
     init_temperature=1e6,
 )
 
-ts = np.arange(nb_steps + 1)
+ts = np.arange(num_steps + 1)
 mean = np.asarray(marginals.mean)[:, 0]
 std = np.sqrt(np.asarray(marginals.cov)[:, 0, 0])
 

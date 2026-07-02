@@ -1,6 +1,6 @@
 # Recursive Entropic Variational Smoothing
 
-Implements the approximate inference algorithms from the paper [Proximal Approximate Inference in State-Space Models](https://arxiv.org/abs/2511.15409). This code was written by [Hany Abdulsamad](https://github.com/hanyas).
+Implements the approximate inference algorithms from the paper [Proximal Approximate Inference in State-Space Models](https://arxiv.org/abs/2511.15409).
 
 `varsmooth` performs iterated Gaussian smoothing in nonlinear, non-Gaussian state-space models. Inference is cast as a sequence of entropic trust-region (KL-constrained) updates over a Gauss–Markov posterior, with the model expanded through generalized statistical linear regression or Fourier–Hermite moment matching. See the scripts in `examples/` for demonstrations.
 
@@ -12,7 +12,56 @@ Install [JAX](https://github.com/jax-ml/jax?tab=readme-ov-file#installation) for
 $ pip install -e .
 ```
 
-for an editable install.
+for an editable install. The library core depends only on NumPy, SciPy, and JAX; the plotting used by `examples/` and `experiments/` is an optional extra:
+
+```bash
+$ pip install -e ".[examples]"
+```
+
+## Quickstart
+
+Run an iterated forward smoother on a small linear-Gaussian model and read off the posterior marginals:
+
+```python
+import jax
+import numpy as np
+
+from varsmooth.approximation import gauss_hermite_linearization as linearize
+from varsmooth.approximation.linearization import get_log_likelihood, get_log_prior, get_log_transition
+from varsmooth.objects import AdditiveGaussianModel, AffineGaussian, Gaussian, GaussMarkov
+from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
+from varsmooth.smoothers.utils import std_forward_message
+
+jax.config.update("jax_enable_x64", True)
+
+dim, num_steps = 2, 25
+A, H = 0.9 * np.eye(dim), np.eye(dim)
+prior = Gaussian(np.zeros(dim), np.eye(dim))
+transition = AdditiveGaussianModel(lambda x: A @ x, Gaussian(np.zeros(dim), 0.1 * np.eye(dim)))
+likelihood = AdditiveGaussianModel(lambda x: H @ x, Gaussian(np.zeros(dim), 0.1 * np.eye(dim)))
+observations = np.zeros((num_steps, dim))  # replace with your data
+
+# initial forward Gauss-Markov posterior: a root marginal plus num_steps kernels
+init = GaussMarkov(
+    marginal=prior,
+    kernels=AffineGaussian(
+        np.repeat([0.1 * np.eye(dim)], num_steps, axis=0),
+        np.zeros((num_steps, dim)),
+        np.repeat([np.eye(dim)], num_steps, axis=0),
+    ),
+)
+
+# expand the model into quadratic log-potentials via posterior linearization
+log_prior_fn = lambda q: get_log_prior(prior, q, linearize)
+log_transition_fn = lambda q, _: get_log_transition(transition, q, linearize)
+log_likelihood_fn = lambda y, q: get_log_likelihood(y, likelihood, q, linearize)
+
+posterior = iterated_forward_markov_smoother(
+    observations, log_prior_fn, log_transition_fn, log_likelihood_fn,
+    init, kl_constraint=1.0, verbose=False,
+)
+marginals = std_forward_message(posterior)  # Gaussian marginals over x_0 .. x_T
+```
 
 ## Smoothers
 

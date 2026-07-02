@@ -1,14 +1,19 @@
-"""Shared helpers for the experiments"""
+"""Shared helpers for the experiments."""
 
-import contextlib
 import csv
 import os
 from pathlib import Path
-import sys
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+
+jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_platform_name", "cpu")
+
+# Headless matplotlib backend for the experiment scripts; set before any pyplot
+# import (the scripts import pyplot lazily inside main(), after this harness).
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 from varsmooth.approximation import cubature_linearization
 from varsmooth.approximation import cubature_quadratization
@@ -20,8 +25,8 @@ from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
-from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
 from varsmooth.smoothers.hybrid_markov import iterated_hybrid_markov_smoother
+from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
 from varsmooth.smoothers.utils import free_energy
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
 from varsmooth.smoothers.utils import kl_between_marginals
@@ -43,24 +48,15 @@ FH_BACKENDS = {
 
 
 # ---- I/O --------------------------------------------------------------------
-@contextlib.contextmanager
-def silence_stdout():
-    """Suppress the smoother's per-iteration `jax.debug.print` (writes to OS fd 1)."""
-    sys.stdout.flush()
-    devnull = os.open(os.devnull, os.O_WRONLY)
-    saved = os.dup(1)
-    os.dup2(devnull, 1)
-    try:
-        yield
-    finally:
-        sys.stdout.flush()
-        os.dup2(saved, 1)
-        os.close(devnull)
-        os.close(saved)
-
-
 def write_csv(path, rows):
-    """Write `rows` (list of dicts) to `path` as CSV; columns are the first row's keys."""
+    """Write rows to path as CSV and log the destination.
+
+    Args:
+        path: str or Path
+            Destination CSV file.
+        rows: list
+            Rows as dicts sharing the same keys; the columns are the first row's keys.
+    """
     path = Path(path)
     fieldnames = list(rows[0]) if rows else []
     with path.open("w", newline="") as fh:
@@ -72,9 +68,23 @@ def write_csv(path, rows):
 
 
 def save_fig(fig, path):
-    """Save `fig` to `path` (tight bbox) and return the path."""
+    """Save fig with a tight bounding box, close it, and log the destination.
+
+    Args:
+        fig: matplotlib.figure.Figure
+            The figure to write.
+        path: str or Path
+            Destination image file.
+
+    Returns:
+        Path
+            The path written.
+    """
+    import matplotlib.pyplot as plt
+
     path = Path(path)
     fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
     print(f"  wrote {path}")
     return path
 
@@ -98,32 +108,47 @@ def set_style(linewidth=1.8, **overrides):
 
 # ---- metrics ----------------------------------------------------------------
 def make_elbo_evaluator(observations, lp_fn, lt_fn, lo_fn):
-    """Factory: jitted ELBO F(q) = E_q[log p] + H(q) for the given log-potential builders."""
+    """Build a jitted ELBO F(q) = E_q[log p] + H(q) for the given log-potential builders.
+
+    Args:
+        observations: Array
+            Observation sequence of leading shape (T,).
+        lp_fn: Callable
+            Log-prior builder.
+        lt_fn: Callable
+            Log-transition builder.
+        lo_fn: Callable
+            Log-likelihood builder.
+
+    Returns:
+        Callable
+            elbo_of(marginals, kernels) returning the scalar free energy.
+    """
 
     @jax.jit
     def elbo_of(marginals, kernels):
-        log_prior, log_transition, log_observation = statistical_expansion(
+        log_prior, log_transition, log_likelihood = statistical_expansion(
             observations, lp_fn, lt_fn, lo_fn, kernels, marginals
         )
-        return free_energy(log_prior, log_transition, log_observation, marginals, kernels)
+        return free_energy(log_prior, log_transition, log_likelihood, marginals, kernels)
 
     return elbo_of
 
 
 def rmse(mean, ref):
-    """Trajectory RMSE sqrt( mean_k ||m_k - ref_k||^2 )."""
+    """Return the trajectory RMSE sqrt(mean_k ||m_k - ref_k||^2)."""
     m = np.asarray(mean)
     r = np.asarray(ref).reshape(m.shape)
     return float(np.sqrt(np.mean(np.sum((m - r) ** 2, axis=-1))))
 
 
 def avg_kl(q, ref):
-    """Mean over k of KL(q_k || ref_k)."""
+    """Return the mean over k of KL(q_k || ref_k)."""
     return float(jnp.mean(jax.vmap(kl_between_marginals)(q, ref)))
 
 
 def nlpd(marginals, x_true):
-    """Calibration NLPD: mean_k -log N(x*_k; m_k, P_k) of the true path under the marginals."""
+    """Return the calibration NLPD mean_k -log N(x*_k; m_k, P_k) of the true path."""
     m = jnp.asarray(marginals.mean)
     P = jnp.asarray(marginals.cov)
     x = jnp.asarray(x_true).reshape(m.shape)
@@ -135,10 +160,25 @@ def nlpd(marginals, x_true):
 
 
 # ---- smoother runners -------------------------------------------------------
+def make_forward_init(system, num_steps, F_scale=0.1, Sigma_scale=1.0, prior=None):
+    """Build a forward Gauss-Markov init: root = prior, kernels = (F_scale I, 0, Sigma_scale I).
 
+    Args:
+        system: namedtuple
+            System carrying a .prior Gaussian.
+        num_steps: int
+            Number of transitions T.
+        F_scale: float
+            Scale of the identity transition map in the init kernels.
+        Sigma_scale: float
+            Scale of the identity conditional covariance in the init kernels.
+        prior: Gaussian
+            Root marginal to use instead of system.prior when given.
 
-def make_forward_init(system, nb_steps, F_scale=0.1, Sigma_scale=1.0, prior=None):
-    """Forward Gauss-Markov init: root = prior, kernels = (F_scale*I, 0, Sigma_scale*I)."""
+    Returns:
+        GaussMarkov
+            The forward Gauss-Markov init.
+    """
     dim_x = jnp.asarray(system.prior.mean).shape[0]
     F = F_scale * np.eye(dim_x)
     d = np.zeros((dim_x,))
@@ -146,19 +186,15 @@ def make_forward_init(system, nb_steps, F_scale=0.1, Sigma_scale=1.0, prior=None
     return GaussMarkov(
         marginal=system.prior if prior is None else prior,
         kernels=AffineGaussian(
-            np.repeat([F], nb_steps, axis=0),
-            np.repeat([d], nb_steps, axis=0),
-            np.repeat([Sigma], nb_steps, axis=0),
+            np.repeat([F], num_steps, axis=0),
+            np.repeat([d], num_steps, axis=0),
+            np.repeat([Sigma], num_steps, axis=0),
         ),
     )
 
 
-def make_reverse_init(system, nb_steps, **kwargs):
-    """Reverse Gauss-Markov init derived from the forward init."""
-    return initialize_reverse_with_forward(make_forward_init(system, nb_steps, **kwargs))
-
-
 def get_marginals(direction, result):
+    """Return the standard marginals of a smoother result for the given direction."""
     if direction == "forward":
         return std_forward_message(result)
     if direction == "reverse":
@@ -167,7 +203,20 @@ def get_marginals(direction, result):
 
 
 def get_markov_history(diags, rts=None, x_true=None):
-    """Per-iteration records from smoother `diags`; adds rmse/kl vs `rts` and rmse vs `x_true` when given."""
+    """Build per-iteration records from smoother diagnostics.
+
+    Args:
+        diags: dict
+            Smoother return_history diagnostics (marginals, dual, damping, ...).
+        rts: Gaussian
+            Exact RTS marginals; when given, adds rmse_rts and kl_rts per iteration.
+        x_true: Array
+            True trajectory; when given, adds rmse_true per iteration.
+
+    Returns:
+        list
+            One dict per iteration with the recorded quantities.
+    """
     means = np.asarray(diags["marginals"].mean)
     covs = np.asarray(diags["marginals"].cov)
     history = []
@@ -199,8 +248,36 @@ def run_iterated_smoother(
     min_temperature=1e-12,
     max_iterations=100,
     return_history=False,
+    verbose=False,
 ):
-    """KL-constrained iterated smoother (forward / reverse / hybrid) from a forward init."""
+    """Run the KL-constrained iterated smoother (forward / reverse / hybrid) from a forward init.
+
+    Args:
+        direction: str
+            One of "forward", "reverse", "hybrid".
+        model_fns: tuple
+            The (log_prior_fn, log_transition_fn, log_likelihood_fn) builders.
+        observations: Array
+            Observation sequence of leading shape (T,).
+        init_fwd_posterior: GaussMarkov
+            Forward Gauss-Markov init; the reverse/hybrid inits are derived from it.
+        kl_constraint: float
+            Trust-region radius per iteration.
+        init_temperature: float
+            Initial line-search temperature.
+        min_temperature: float
+            Early-stopping temperature threshold.
+        max_iterations: int
+            Maximum number of iterations.
+        return_history: bool
+            When True, also return the per-iteration diagnostics.
+        verbose: bool
+            Forwarded to the smoother; False silences its per-iteration prints.
+
+    Returns:
+        Gaussian
+            The smoothed marginals, or (marginals, diagnostics) when return_history.
+    """
     lp, lt, lo = model_fns
     kw = dict(
         kl_constraint=kl_constraint,
@@ -208,6 +285,7 @@ def run_iterated_smoother(
         min_temperature=min_temperature,
         max_iterations=max_iterations,
         return_history=return_history,
+        verbose=verbose,
     )
     if direction == "forward":
         out = iterated_forward_markov_smoother(observations, lp, lt, lo, init_fwd_posterior, **kw)

@@ -1,60 +1,74 @@
 """Experiment (SV): smoothed log-volatility vs. the true latent state.
 
 Outputs:
-  outputs/fig_sv_trajectory.pdf     -- smoothed log-vol vs truth
+  outputs/fig_sv_trajectory.pdf     -- smoothed log-vol vs truth (GSLR and FH, +/-2 sigma bands)
   outputs/results_sv_trajectory.csv -- the plotted trajectory
+
+Run from this directory: python exp1_comparison.py
 """
 
-from pathlib import Path
-
 import jax
-import matplotlib
 import numpy as np
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import sv_common as sv
 
-OUTDIR = Path(__file__).resolve().parent / "outputs"
-OUTDIR.mkdir(exist_ok=True)
 
-
-def fit(system, ys, horizon, kl_step, max_iter):
-    gslr = sv.make_model_fns(system, "GSLR", "gauss_hermite")
-    fh = sv.make_model_fns(system, "FH", "gauss_hermite")
-    init = sv.make_forward_init(system, horizon)
-    with sv.silence_stdout():
-        q_gslr = jax.block_until_ready(
-            sv.run_iterated_smoother("reverse", gslr, ys, init, kl_constraint=kl_step, max_iterations=max_iter)
+def fit(system, ys, num_steps, kl_constraint, max_iter):
+    """Fit the reverse iterated smoother with the GSLR and FH families."""
+    gslr_fns = sv.make_model_fns(system, "GSLR", "gauss_hermite")
+    fh_fns = sv.make_model_fns(system, "FH", "gauss_hermite")
+    init = sv.make_forward_init(system, num_steps)
+    q_gslr = jax.block_until_ready(
+        sv.run_iterated_smoother(
+            direction="reverse",
+            model_fns=gslr_fns,
+            observations=ys,
+            init_fwd_posterior=init,
+            kl_constraint=kl_constraint,
+            max_iterations=max_iter,
         )
-        q_fh = jax.block_until_ready(
-            sv.run_iterated_smoother("reverse", fh, ys, init, kl_constraint=kl_step, max_iterations=max_iter)
+    )
+    q_fh = jax.block_until_ready(
+        sv.run_iterated_smoother(
+            direction="reverse",
+            model_fns=fh_fns,
+            observations=ys,
+            init_fwd_posterior=init,
+            kl_constraint=kl_constraint,
+            max_iterations=max_iter,
         )
+    )
     return q_gslr, q_fh
 
 
 def main():
+    import matplotlib.pyplot as plt
+
+    # ---- config ----
     num_steps = 1000
     data_seed = 1
-
-    kl_step = 10.0
+    kl_constraint = 10.0
     max_iter = 50
 
+    # ---- data ----
     system = sv.make_sv_system()
     print(f"SV trajectory: T={num_steps}, system mu={system.mu} phi={system.phi} sigma={system.sigma}")
-
     x_true, ys = sv.simulate_data(system, num_steps, np.random.RandomState(data_seed))
-    x_flat = np.asarray(x_true).reshape(-1)
-    q_gslr, q_fh = fit(system, ys, num_steps, kl_step, max_iter)
-    ks = np.arange(num_steps + 1)
 
+    # ---- run ----
+    q_gslr, q_fh = fit(system, ys, num_steps, kl_constraint, max_iter)
+
+    # 1-D latent state: flatten each (T+1, 1) array to (T+1,); the clip guards tiny
+    # negative smoothed variances (float round-off) before the sqrt.
+    ks = np.arange(num_steps + 1)
+    x_flat = np.asarray(x_true).reshape(-1)
     gslr_m = np.asarray(q_gslr.mean).reshape(-1)
     gslr_s = np.sqrt(np.clip(np.asarray(q_gslr.cov).reshape(-1), 0, None))
     fh_m = np.asarray(q_fh.mean).reshape(-1)
     fh_s = np.sqrt(np.clip(np.asarray(q_fh.cov).reshape(-1), 0, None))
 
+    # ---- report (figure + csv) ----
     sv.write_csv(
-        OUTDIR / "results_sv_trajectory.csv",
+        sv.OUTPUT_DIR / "results_sv_trajectory.csv",
         [
             dict(
                 k=int(kk),
@@ -93,8 +107,7 @@ def main():
     )
     ax.legend(frameon=False, ncol=3, fontsize=9, loc="best")
     fig.tight_layout()
-    fig.savefig(OUTDIR / "fig_sv_trajectory.pdf", bbox_inches="tight")
-    plt.close(fig)
+    sv.save_fig(fig, "fig_sv_trajectory.pdf")
 
 
 if __name__ == "__main__":

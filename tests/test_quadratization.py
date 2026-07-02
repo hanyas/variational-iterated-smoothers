@@ -52,7 +52,7 @@ def test_quadratic(dim_x, seed, method):
 @pytest.mark.parametrize("dim_y", [1, 2, 3, 4])
 @pytest.mark.parametrize("seed", [27, 33, 37])
 @pytest.mark.parametrize("method", QUADRATIZATION_METHODS)
-def test_log_observation_additive(dim_y, dim_x, seed, method):
+def test_log_likelihood_additive(dim_y, dim_x, seed, method):
 
     np.random.seed(seed)
     _, H, e, Delta, _ = generate_system(dim_x, dim_y)

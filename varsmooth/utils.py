@@ -1,22 +1,62 @@
+from typing import Literal
+
 import jax
 import jax.numpy as jnp
 
 
 def logdet(A):
+    """Return the log-determinant of A via slogdet, discarding the sign.
+
+    Only the magnitude term of jnp.linalg.slogdet is returned, so the result
+    is valid only for matrices with positive determinant. Every call site here
+    passes a symmetric positive-definite matrix.
+
+    Args:
+        A: Array
+            Square matrix of shape (n, n) assumed to have positive determinant.
+
+    Returns:
+        Array
+            The scalar log|det A|.
+    """
     return jnp.linalg.slogdet(A)[1]
 
 
 def symmetrize(A):
+    """Return the symmetric part 0.5 (A + A^T) of a square matrix."""
     return 0.5 * (A.T + A)
 
 
 def none_or_idx(x, idx):
+    """Index a pytree along its leading axis, passing None through unchanged.
+
+    Args:
+        x: Any
+            A pytree whose leaves share a leading batch axis, or None.
+        idx: int
+            Index taken along the leading axis of every leaf.
+
+    Returns:
+        The indexed pytree, or None if x is None.
+    """
     if x is None:
         return None
     return jax.tree.map(lambda z: z[idx], x)
 
 
 def none_or_shift(x, shift):
+    """Drop leading or trailing elements of a pytree, passing None through.
+
+    Args:
+        x: Any
+            A pytree whose leaves share a leading batch axis, or None.
+        shift: int
+            If positive, drop the first shift elements (each leaf keeps
+            z[shift:]); if negative, drop the last -shift elements (z[:shift]).
+
+    Returns:
+        The shifted pytree, or None if x is None.
+    """
     if x is None:
         return None
     if shift > 0:
@@ -24,7 +64,22 @@ def none_or_shift(x, shift):
     return jax.tree.map(lambda z: z[:shift], x)
 
 
-def none_or_concat(x, y, position=1):
+def none_or_concat(x, y, position: Literal[1, -1] = 1):
+    """Attach a single element y onto batched x, passing None through.
+
+    Args:
+        x: Any
+            Batched pytree with a leading axis of length T, or None.
+        y: Any
+            A single element (one slice) to attach to x, or None.
+        position: int
+            1 to prepend y as the new first element, giving [y, *x]; -1 to
+            append it as the new last element, giving [*x, y].
+
+    Returns:
+        The extended pytree of leading length T + 1, or None if either input
+        is None.
+    """
     if x is None or y is None:
         return None
     if position == 1:
@@ -34,17 +89,17 @@ def none_or_concat(x, y, position=1):
 
 
 def bounded_while_loop(cond_fun, body_fun, init_val, maxiter):
-    """``jax.lax.while_loop`` with an iteration cap.
+    """Run jax.lax.while_loop with a hard iteration cap.
 
     Args:
-        cond_fun:
-            predicate ``val -> bool`` controlling continuation.
-        body_fun:
-            update ``val -> val`` applied each iteration.
-        init_val:
-            initial loop-carried value (any pytree).
-        maxiter:
-            maximum number of iterations (static int).
+        cond_fun: Callable
+            Predicate val -> bool controlling continuation.
+        body_fun: Callable
+            Update val -> val applied each iteration.
+        init_val: Any
+            Initial loop-carried value (any pytree).
+        maxiter: int
+            Maximum number of iterations (static int).
 
     Returns:
         The final loop-carried value.

@@ -5,15 +5,16 @@ import jax
 from jax import Array
 from jax import numpy as jnp
 
-from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
+from varsmooth.objects import Gaussian
 from varsmooth.objects import LogMessage
 from varsmooth.objects import ValueFn
 from varsmooth.smoothers.forward_markov import log_backward_message
 from varsmooth.smoothers.forward_markov import std_forward_message
-from varsmooth.smoothers.reverse_markov import dual_objective
 from varsmooth.smoothers.reverse_markov import log_forward_message
+from varsmooth.smoothers.reverse_markov import reverse_dual_objective
 from varsmooth.smoothers.reverse_markov import std_backward_message
+from varsmooth.smoothers.utils import _run_iterations
 from varsmooth.smoothers.utils import kl_between_forward_gauss_markovs
 from varsmooth.smoothers.utils import kl_between_reverse_gauss_markovs
 from varsmooth.smoothers.utils import line_search
@@ -21,7 +22,6 @@ from varsmooth.smoothers.utils import log_to_std_form
 from varsmooth.smoothers.utils import merge_messages
 from varsmooth.smoothers.utils import statistical_expansion
 from varsmooth.smoothers.utils import std_to_log_form
-from varsmooth.utils import bounded_while_loop
 from varsmooth.utils import none_or_concat
 from varsmooth.utils import none_or_shift
 
@@ -30,19 +30,46 @@ def hybrid_markov_smoother(
     observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
-    log_observation_fn: Callable,
+    log_likelihood_fn: Callable,
     forward_reference: GaussMarkov,
     reverse_reference: GaussMarkov,
     temperature: float,
 ) -> Gaussian:
+    """Run one hybrid-Markov pass, merging a forward and a reverse message pass.
 
+    Linearizes the model around the forward reference marginals, runs the
+    backward pass of the forward smoother and the forward pass of the reverse
+    smoother at the damping induced by temperature, then merges their messages
+    and boundaries into updated marginals.
+
+    Args:
+        observations: Array
+            Batched observations of leading shape (T,).
+        log_prior_fn: Callable
+            Maps the root marginal to the quadratic log-prior over x_0.
+        log_transition_fn: Callable
+            Maps reference kernels and marginals to the pairwise quadratic
+            log-transitions.
+        log_likelihood_fn: Callable
+            Maps observations and marginals to the quadratic log-likelihoods.
+        forward_reference: GaussMarkov
+            The forward Gauss-Markov posterior to expand around.
+        reverse_reference: GaussMarkov
+            The reverse Gauss-Markov posterior to expand around.
+        temperature: float
+            Trust-region temperature t; damping = t / (1 + t).
+
+    Returns:
+        Gaussian
+            The updated per-marginal Gaussians of leading shape (T + 1,).
+    """
     marginals = std_forward_message(forward_reference)
 
-    log_prior, log_transition, log_observation = statistical_expansion(
+    log_prior, log_transition, log_likelihood = statistical_expansion(
         observations=observations,
         log_prior_fn=log_prior_fn,
         log_transition_fn=log_transition_fn,
-        log_observation_fn=log_observation_fn,
+        log_likelihood_fn=log_likelihood_fn,
         kernels=forward_reference.kernels,  # or reverse_reference.kernels
         marginals=marginals,
     )
@@ -51,7 +78,7 @@ def hybrid_markov_smoother(
     forward_posterior, _, _, backward_message, _ = log_backward_message(
         log_prior=log_prior,
         log_transition=log_transition,
-        log_observation=log_observation,
+        log_likelihood=log_likelihood,
         forward_reference=forward_reference,
         damping=damping,
     )
@@ -59,7 +86,7 @@ def hybrid_markov_smoother(
     reverse_posterior, _, forward_message, _, _ = log_forward_message(
         log_prior=log_prior,
         log_transition=log_transition,
-        log_observation=log_observation,
+        log_likelihood=log_likelihood,
         reverse_reference=reverse_reference,
         damping=damping,
     )
@@ -83,6 +110,31 @@ def update_marginals(
     last_boundary: Gaussian,
     damping: float,
 ):
+    """Merge forward and backward messages into damped, updated marginals.
+
+    Combines the forward and backward messages at the interior marginals, damps
+    them against the current log-marginals, overrides the first and last
+    marginals with the supplied boundaries, and converts the result back to
+    standard (moment) form.
+
+    Args:
+        marginals: Gaussian
+            Current per-marginal Gaussians of leading shape (T + 1,).
+        forward_message: ValueFn
+            Per-marginal forward value functions produced by log_forward_message.
+        backward_message: LogMessage
+            Per-step backward messages produced by log_backward_message.
+        first_boundary: Gaussian
+            Updated first marginal (root x_0) from the forward posterior.
+        last_boundary: Gaussian
+            Updated last marginal (leaf x_T) from the reverse posterior.
+        damping: float
+            Trust-region damping in [0, 1); damping = t / (1 + t).
+
+    Returns:
+        Gaussian
+            The updated per-marginal Gaussians of leading shape (T + 1,).
+    """
     log_marginals = jax.vmap(std_to_log_form)(marginals)
     log_messages = jax.vmap(merge_messages)(
         none_or_shift(none_or_shift(forward_message, -1), 1),
@@ -127,16 +179,17 @@ def update_marginals(
     static_argnames=[
         "log_prior_fn",
         "log_transition_fn",
-        "log_observation_fn",
+        "log_likelihood_fn",
         "max_iterations",
         "return_history",
+        "verbose",
     ],
 )
 def iterated_hybrid_markov_smoother(
     observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
-    log_observation_fn: Callable,
+    log_likelihood_fn: Callable,
     init_forward_posterior: GaussMarkov,
     init_reverse_posterior: GaussMarkov,
     kl_constraint: float,
@@ -144,56 +197,61 @@ def iterated_hybrid_markov_smoother(
     min_temperature: float = 1e-12,
     max_iterations: int = 1000,
     return_history: bool = False,
+    verbose: bool = True,
 ):
-    """
-    Iterated hybrid-markov smoother with early stopping based on temperature.
+    """Run the iterated hybrid-Markov smoother to convergence.
+
+    Alternates a statistical expansion around the merged marginals with a
+    trust-region step that merges a forward and a reverse message pass, stopping
+    early once the line-search temperature drops to min_temperature or
+    max_iterations is reached.
 
     Args:
-        observations:
-            Array of observations
-        log_prior_fn:
-            Function to compute log prior
-        log_transition_fn:
-            Function to compute log transition
-        log_observation_fn:
-            Function to compute log observation likelihood
-        init_forward_posterior:
-            Initial forward posterior estimate
-        init_reverse_posterior:
-            Initial reverse posterior estimate
-        kl_constraint:
-            KL divergence constraint for the optimization
-        init_temperature:
-            Initial temperature for line search
-        min_temperature:
-            Minimum temperature threshold for early stopping
-        max_iterations:
-            Maximum number of iterations
+        observations: Array
+            Batched observations of leading shape (T,).
+        log_prior_fn: Callable
+            Maps the root marginal to the quadratic log-prior over x_0.
+        log_transition_fn: Callable
+            Maps reference kernels and marginals to the pairwise quadratic
+            log-transitions.
+        log_likelihood_fn: Callable
+            Maps observations and marginals to the quadratic log-likelihoods.
+        init_forward_posterior: GaussMarkov
+            Initial forward Gauss-Markov posterior.
+        init_reverse_posterior: GaussMarkov
+            Initial reverse Gauss-Markov posterior.
+        kl_constraint: float
+            Per-iteration trust-region KL bound.
+        init_temperature: float
+            Initial line-search temperature.
+        min_temperature: float
+            Early-stopping threshold on the temperature.
+        max_iterations: int
+            Maximum number of iterations.
+        return_history: bool
+            If True, run a fixed-length scan and also return stacked
+            per-iteration diagnostics; disables verbose logging.
+        verbose: bool
+            If True (and not return_history), print per-iteration diagnostics.
 
     Returns:
-        Optimal marginals after convergence
+        marginals: Gaussian
+            The converged per-marginal Gaussians of leading shape (T + 1,).
+        history: dict
+            Stacked per-iteration diagnostics, returned only when
+            return_history is True.
     """
 
     def single_iteration(carry, iteration_idx):
-        """
-        Perform a single iteration of the hybrid-markov update.
-
-        Args:
-            carry: Tuple of (reference_marginals, forward_reference, reverse_reference)
-            iteration_idx: Current iteration index (for logging)
-
-        Returns:
-            updated_carry: Updated state tuple
-            final_temperature: Temperature from line search
-        """
+        """Perform a single trust-region iteration of the hybrid-Markov update."""
         reference_marginals, forward_reference, reverse_reference = carry
 
         # Step 1: Compute statistical expansion (around the merged marginals)
-        log_prior, log_transition, log_observation = statistical_expansion(
+        log_prior, log_transition, log_likelihood = statistical_expansion(
             observations=observations,
             log_prior_fn=log_prior_fn,
             log_transition_fn=log_transition_fn,
-            log_observation_fn=log_observation_fn,
+            log_likelihood_fn=log_likelihood_fn,
             kernels=forward_reference.kernels,  # or reverse_reference.kernels
             marginals=reference_marginals,
         )
@@ -202,30 +260,30 @@ def iterated_hybrid_markov_smoother(
         def dual_objective_fn(temperature):
             """Dual objective function for temperature optimization."""
             damping = temperature / (1.0 + temperature)
-            return dual_objective(
+            return reverse_dual_objective(
                 log_prior=log_prior,
                 log_transition=log_transition,
-                log_observation=log_observation,
+                log_likelihood=log_likelihood,
                 reference_posterior=reverse_reference,
                 kl_constraint=kl_constraint,
                 damping=damping,
             )
 
-        # Step 3: Define gradient function for line search.
-        def dual_gradient_fn(temperature):
+        # Step 3: Define the constraint-slack function for the line search.
+        def constraint_slack_fn(temperature):
             """Constraint slack on the merged-marginal move: kl_constraint - KL."""
             damping = temperature / (1.0 + temperature)
             forward_posterior, _, _, _, fwd_feasible = log_backward_message(
                 log_prior=log_prior,
                 log_transition=log_transition,
-                log_observation=log_observation,
+                log_likelihood=log_likelihood,
                 forward_reference=forward_reference,
                 damping=damping,
             )
             reverse_posterior, _, _, _, rev_feasible = log_forward_message(
                 log_prior=log_prior,
                 log_transition=log_transition,
-                log_observation=log_observation,
+                log_likelihood=log_likelihood,
                 reverse_reference=reverse_reference,
                 damping=damping,
             )
@@ -257,14 +315,14 @@ def iterated_hybrid_markov_smoother(
         full_fwd_post, _, _, full_bwd_msg, full_fwd_feasible = log_backward_message(
             log_prior=log_prior,
             log_transition=log_transition,
-            log_observation=log_observation,
+            log_likelihood=log_likelihood,
             forward_reference=forward_reference,
             damping=0.0,
         )
         full_rev_post, _, full_fwd_msg, _, full_rev_feasible = log_forward_message(
             log_prior=log_prior,
             log_transition=log_transition,
-            log_observation=log_observation,
+            log_likelihood=log_likelihood,
             reverse_reference=reverse_reference,
             damping=0.0,
         )
@@ -299,7 +357,7 @@ def iterated_hybrid_markov_smoother(
 
         # Step 4: Perform line search to find optimal temperature
         temperature, dual_value, _, line_search_feasible = line_search(
-            init_temperature, dual_objective_fn, dual_gradient_fn, rtol=0.1 * kl_constraint
+            init_temperature, dual_objective_fn, constraint_slack_fn, rtol=0.1 * kl_constraint
         )
 
         # Step 5: Apply the optimal temperature
@@ -308,14 +366,14 @@ def iterated_hybrid_markov_smoother(
         forward_posterior, _, _, backward_message, _ = log_backward_message(
             log_prior=log_prior,
             log_transition=log_transition,
-            log_observation=log_observation,
+            log_likelihood=log_likelihood,
             forward_reference=forward_reference,
             damping=damping,
         )
         reverse_posterior, _, forward_message, _, _ = log_forward_message(
             log_prior=log_prior,
             log_transition=log_transition,
-            log_observation=log_observation,
+            log_likelihood=log_likelihood,
             reverse_reference=reverse_reference,
             damping=damping,
         )
@@ -375,7 +433,7 @@ def iterated_hybrid_markov_smoother(
             )
             return 0
 
-        if not return_history:
+        if verbose and not return_history:
             jax.lax.cond(feasible, _log_feasible, _log_infeasible, operand=None)
 
         diagnostics = {
@@ -397,36 +455,15 @@ def iterated_hybrid_markov_smoother(
     init_marginals = std_forward_message(init_forward_posterior)
     init_state = (init_marginals, init_forward_posterior, init_reverse_posterior)
 
-    if return_history:
-
-        def scan_step(state, iteration_idx):
-            next_state, _temperature, diagnostics = single_iteration(state, iteration_idx)
-            return next_state, diagnostics
-
-        final_state, history = jax.lax.scan(scan_step, init_state, xs=jnp.arange(max_iterations))
-        optimal_marginals, _, _ = final_state
-        return optimal_marginals, history
-
-    def iteration_body(carry):
-        """Body function for the while loop."""
-        current_state, iteration_count, _ = carry
-        next_state, next_temperature, _ = single_iteration(current_state, iteration_count)
-        return next_state, iteration_count + 1, next_temperature
-
-    def iteration_condition(carry):
-        """Condition function for the while loop."""
-        _, iteration_count, next_temperature = carry
-        # Continue if: not reached max iterations AND temperature is above minimum
-        return jnp.logical_and(iteration_count < max_iterations, next_temperature > min_temperature)
-
-    # Run the iterative optimization
-    final_state, _, _ = bounded_while_loop(
-        cond_fun=iteration_condition,
-        body_fun=iteration_body,
-        init_val=(init_state, 0, init_temperature),
-        maxiter=max_iterations,
+    final_state, history = _run_iterations(
+        single_iteration,
+        init_state,
+        init_temperature,
+        min_temperature,
+        max_iterations,
+        return_history,
     )
-
-    # Extract final marginals
     optimal_marginals, _, _ = final_state
+    if return_history:
+        return optimal_marginals, history
     return optimal_marginals

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "varsmooth"
+description = "Variational Iterated Gaussian Smoothing"
+authors = [{ name = "Hany Abdulsamad", email = "hany@robot-learning.de" }]
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["version"]
+dependencies = [
+    "numpy",
+    "scipy",
+    "jax",
+    "jaxlib",
+]
+
+# The library itself never imports matplotlib; only examples/ and experiments/
+# do. Install it with:  pip install -e ".[examples]"
+[project.optional-dependencies]
+examples = ["matplotlib"]
+
+[tool.setuptools.dynamic]
+version = { attr = "varsmooth.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["varsmooth*"]

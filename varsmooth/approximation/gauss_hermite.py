@@ -1,6 +1,6 @@
 from functools import partial
 import itertools
-from typing import Callable, Union
+from typing import Callable
 
 import jax
 from jax import Array
@@ -8,11 +8,8 @@ import jax.numpy as jnp
 from numpy.polynomial.hermite import hermgauss
 
 from varsmooth.approximation.sigma_points import SigmaPoints
-from varsmooth.approximation.sigma_points import linearize_additive
-from varsmooth.approximation.sigma_points import linearize_conditional
+from varsmooth.approximation.sigma_points import make_linearize
 from varsmooth.approximation.sigma_points import quadratize_any
-from varsmooth.objects import AdditiveGaussianModel
-from varsmooth.objects import ConditionalMomentsModel
 from varsmooth.objects import Gaussian
 
 
@@ -21,32 +18,26 @@ def quadratize(
     q: Gaussian,
     order: int = 3,
 ):
+    """Quadratize a scalar function under q with Gauss-Hermite cubature."""
     _get_sigma_points = lambda m, chol_P: get_sigma_points(m, chol_P, order)
     return quadratize_any(fun, q, _get_sigma_points)
 
 
 def linearize(
-    model: Union[AdditiveGaussianModel, ConditionalMomentsModel],
+    model,
     q: Gaussian,
     order: int = 3,
 ):
+    """Statistically linearize a model under q with Gauss-Hermite cubature."""
     _get_sigma_points = lambda m, chol_P: get_sigma_points(m, chol_P, order)
-
-    if isinstance(model, AdditiveGaussianModel):
-        fun, noise = model
-        return linearize_additive(fun, noise, q, _get_sigma_points)
-    elif isinstance(model, ConditionalMomentsModel):
-        mean_fn, covar_fn = model
-        return linearize_conditional(mean_fn, covar_fn, q, _get_sigma_points)
-    else:
-        raise NotImplementedError
+    return make_linearize(_get_sigma_points)(model, q)
 
 
 @partial(jax.jit, static_argnums=(2,))
 def get_sigma_points(m: Array, chol_P: Array, order: int) -> SigmaPoints:
-
-    nb_dim = m.shape[0]
-    wm, wc, xi = _gauss_hermite_weights(nb_dim, order)
+    """Return the order-point Gauss-Hermite sigma points for N(m, chol_P chol_P^T)."""
+    num_dim = m.shape[0]
+    wm, wc, xi = _gauss_hermite_weights(num_dim, order)
     sigma_points = m[None, :] + (chol_P @ xi).T
     return SigmaPoints(sigma_points, wm, wc, xi)
 
@@ -56,18 +47,24 @@ def get_sigma_points(m: Array, chol_P: Array, order: int) -> SigmaPoints:
 
 
 def mvhermgauss(H: int, D: int):
-    """
-    This function is adapted from GPflow: https://github.com/GPflow/GPflow
+    """Return evaluation locations and weights for multivariate Gauss-Hermite quadrature.
 
-    Return the evaluation locations 'xn', and weights 'wn' for a multivariate
-    Gauss-Hermite quadrature.
+    Adapted from GPflow: https://github.com/GPflow/GPflow
 
-    The outputs can be used to approximate the following type of integral:
-    int exp(-x)*f(x) dx ~ sum_i w[i,:]*f(x[i,:])
+    The outputs approximate integrals of the form
+    int exp(-x) f(x) dx ~ sum_i w[i, :] f(x[i, :]).
 
-    :param H: Number of Gauss-Hermite evaluation points.
-    :param D: Number of input dimensions. Needs to be known at call-time.
-    :return: eval_locations 'x' (H**DxD), weights 'w' (H**D)
+    Args:
+        H: int
+            Number of Gauss-Hermite evaluation points per dimension.
+        D: int
+            Number of input dimensions; must be known at call time.
+
+    Returns:
+        x: Array
+            Evaluation locations of shape (H**D, D).
+        w: Array
+            Quadrature weights of shape (H**D,).
     """
     gh_x, gh_w = hermgauss(H)
     x = jnp.array(list(itertools.product(*(gh_x,) * D)))  # H**DxD
@@ -75,12 +72,10 @@ def mvhermgauss(H: int, D: int):
     return x, w
 
 
-def _gauss_hermite_weights(nb_dim=1, order=20):
-    """
-    Return weights and sigma-points for Gauss-Hermite cubature
-    """
+def _gauss_hermite_weights(num_dim, order):
+    """Return the Gauss-Hermite mean/covariance weights and unit sigma points."""
     # sigma_pts, weights = hermgauss(order)  # Gauss-Hermite sigma points and weights
-    sigma_pts, weights = mvhermgauss(order, nb_dim)
+    sigma_pts, weights = mvhermgauss(order, num_dim)
     sigma_pts = jnp.sqrt(2) * sigma_pts.T
-    weights = weights.T * jnp.pi ** (-0.5 * nb_dim)  # scale weights by 1/√π
+    weights = weights.T * jnp.pi ** (-0.5 * num_dim)  # scale weights by 1/√π
     return weights, weights, sigma_pts
