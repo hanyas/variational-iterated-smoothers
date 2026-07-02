@@ -23,13 +23,13 @@ from varsmooth.utils import none_or_shift
 
 def kl_between_marginals(p, q):
     dim = p.mean.shape[0]
-    return 0.5 * (
-        jnp.trace(jsc.linalg.inv(q.cov) @ p.cov)
-        - dim
-        + (q.mean - p.mean).T @ jsc.linalg.solve(q.cov, q.mean - p.mean)
-        + logdet(q.cov)
-        - logdet(p.cov)
-    )
+    diff = q.mean - p.mean
+    # Factor q.cov once and reuse it for the trace, quadratic, and logdet terms.
+    chol_q = jsc.linalg.cho_factor(q.cov)
+    trace_term = jnp.trace(jsc.linalg.cho_solve(chol_q, p.cov))
+    quad_term = diff.T @ jsc.linalg.cho_solve(chol_q, diff)
+    logdet_q = 2.0 * jnp.sum(jnp.log(jnp.diag(chol_q[0])))
+    return 0.5 * (trace_term - dim + quad_term + logdet_q - logdet(p.cov))
 
 
 @partial(jax.jit, static_argnums=(1, 2, 3))

@@ -17,7 +17,6 @@ from varsmooth.objects import ValueFn
 from varsmooth.smoothers.core import make_smoother_suite
 from varsmooth.smoothers.utils import kl_between_reverse_gauss_markovs
 from varsmooth.smoothers.utils import std_backward_message
-from varsmooth.utils import logdet
 from varsmooth.utils import none_or_concat
 from varsmooth.utils import symmetrize
 
@@ -34,27 +33,37 @@ def log_forward_message(
         R, r, rho = carry
         C11, C12, C21, C22, c1, c2, kappa, L, l, nu, F, d, Sigma = args
 
-        G11 = (1.0 - damping) * C11 + damping * F.T @ jsc.linalg.solve(Sigma, F)
-        G22 = (1.0 - damping) * (C22 + R) + damping * jsc.linalg.inv(Sigma)
-        G21 = (1.0 - damping) * C21 + damping * jsc.linalg.solve(Sigma, F)
-        g1 = (1.0 - damping) * c1 - damping * F.T @ jsc.linalg.solve(Sigma, d)
-        g2 = (1.0 - damping) * (c2 + r) + damping * jsc.linalg.solve(Sigma, d)
+        dim = Sigma.shape[0]
+        # Factor the kernel covariance once and reuse it for every Sigma-solve.
+        chol_Sigma = jsc.linalg.cho_factor(Sigma)
+        iSig = jsc.linalg.cho_solve(chol_Sigma, jnp.eye(dim))
+        iSig_F = jsc.linalg.cho_solve(chol_Sigma, F)
+        iSig_d = jsc.linalg.cho_solve(chol_Sigma, d)
+        logdet_Sigma = 2.0 * jnp.sum(jnp.log(jnp.diag(chol_Sigma[0])))
+
+        G11 = (1.0 - damping) * C11 + damping * F.T @ iSig_F
+        G22 = (1.0 - damping) * (C22 + R) + damping * iSig
+        G21 = (1.0 - damping) * C21 + damping * iSig_F
+        g1 = (1.0 - damping) * c1 - damping * F.T @ iSig_d
+        g2 = (1.0 - damping) * (c2 + r) + damping * iSig_d
         theta = (
             (1.0 - damping) * (kappa + rho)
-            - 0.5 * damping * logdet(2 * jnp.pi * Sigma)
-            - 0.5 * damping * d.T @ jsc.linalg.solve(Sigma, d)
+            - 0.5 * damping * (dim * jnp.log(2 * jnp.pi) + logdet_Sigma)
+            - 0.5 * damping * d.T @ iSig_d
         )
 
         G11 = symmetrize(G11)
         G22 = symmetrize(G22)
 
+        # Feasibility via a Cholesky attempt: non-PD G22 yields a non-finite factor.
+        chol_G22 = jnp.linalg.cholesky(G22)
+        pd_G22 = jnp.all(jnp.isfinite(chol_G22))
+
         def _feasible_forward_pass():
-            dim = G22.shape[0]
-            chol_G22 = jsc.linalg.cho_factor(G22)
-            iG22_G21 = jsc.linalg.cho_solve(chol_G22, G21)
-            iG22_g2 = jsc.linalg.cho_solve(chol_G22, g2)
-            Sigma = jsc.linalg.cho_solve(chol_G22, jnp.eye(dim))
-            logdet_G22 = 2.0 * jnp.sum(jnp.log(jnp.diag(chol_G22[0])))
+            iG22_G21 = jsc.linalg.cho_solve((chol_G22, True), G21)
+            iG22_g2 = jsc.linalg.cho_solve((chol_G22, True), g2)
+            Sigma = jsc.linalg.cho_solve((chol_G22, True), jnp.eye(dim))
+            logdet_G22 = 2.0 * jnp.sum(jnp.log(jnp.diag(chol_G22)))
 
             S = G11 - G21.T @ iG22_G21
             s = g1 + G21.T @ iG22_g2
@@ -83,7 +92,7 @@ def log_forward_message(
             return value_fn, (value_fn, AffineGaussian(F, d, Sigma), LogMessage(S, s, xi), False)  # Not feasible
 
         return jax.lax.cond(
-            pred=jnp.all(jnp.linalg.eigvalsh(G22) > 1e-8),
+            pred=pd_G22,
             true_fun=_feasible_forward_pass,
             false_fun=_not_feasible_forward_pass,
         )
@@ -102,20 +111,22 @@ def log_forward_message(
     R, r, rho = last_value_fn
 
     m, P = nominal_marginal
-    inv_P = jsc.linalg.inv(P)
+    dim = P.shape[0]
+    chol_P = jsc.linalg.cho_factor(P)
+    inv_P = jsc.linalg.cho_solve(chol_P, jnp.eye(dim))
+    logdet_P = 2.0 * jnp.sum(jnp.log(jnp.diag(chol_P[0])))
 
     J11 = damping * inv_P
     J21 = damping * inv_P
     J22 = (1.0 - damping) * R + damping * inv_P
     j2 = (1.0 - damping) * r
     j1 = jnp.zeros_like(j2)
-    tau = (1.0 - damping) * rho - 0.5 * damping * logdet(2 * jnp.pi * P)
+    tau = (1.0 - damping) * rho - 0.5 * damping * (dim * jnp.log(2 * jnp.pi) + logdet_P)
 
     J11 = symmetrize(J11)
     J22 = symmetrize(J22)
 
     def _feasible_marginal():
-        dim = J22.shape[0]
         chol_J22 = jsc.linalg.cho_factor(J22)
         iJ22_J21 = jsc.linalg.cho_solve(chol_J22, J21)
         iJ22_j2 = jsc.linalg.cho_solve(chol_J22, j2)
