@@ -211,8 +211,8 @@ def iterated_hybrid_markov_smoother(
                 damping=damping,
             )
 
-        # Step 3: Define gradient function for line search.
-        def dual_gradient_fn(temperature):
+        # Step 3: Define the constraint-slack function for the line search.
+        def constraint_slack_fn(temperature):
             """Constraint slack on the merged-marginal move: kl_constraint - KL."""
             damping = temperature / (1.0 + temperature)
             forward_posterior, _, _, _, fwd_feasible = log_backward_message(
@@ -299,7 +299,7 @@ def iterated_hybrid_markov_smoother(
 
         # Step 4: Perform line search to find optimal temperature
         temperature, dual_value, _, line_search_feasible = line_search(
-            init_temperature, dual_objective_fn, dual_gradient_fn, rtol=0.1 * kl_constraint
+            init_temperature, dual_objective_fn, constraint_slack_fn, rtol=0.1 * kl_constraint
         )
 
         # Step 5: Apply the optimal temperature

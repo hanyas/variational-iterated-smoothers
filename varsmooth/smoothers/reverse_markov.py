@@ -1,6 +1,7 @@
 from typing import Tuple
 
 import jax
+from jax import Array
 from jax import numpy as jnp
 from jax import scipy as jsc
 
@@ -27,7 +28,7 @@ def log_forward_message(
     log_observation: LogObservation,
     reverse_reference: GaussMarkov,
     damping: float,
-) -> Tuple[GaussMarkov, LogMarginalNorm, ValueFn, LogMessage, bool]:
+) -> Tuple[GaussMarkov, LogMarginalNorm, ValueFn, LogMessage, Array]:
 
     def _forward_step(carry, args):
         R, r, rho = carry
@@ -91,7 +92,7 @@ def log_forward_message(
 
     nominal_marginal, nominal_kernels = reverse_reference
 
-    last_value_fn, (value_fns, kernels, log_fwd_msgs, feasible_pass) = jax.lax.scan(
+    last_value_fn, (value_fns, kernels, log_fwd_msgs, feasible_flags) = jax.lax.scan(
         f=_forward_step,
         init=first_value_fn,
         xs=(*log_transition, *log_observation, *nominal_kernels),
@@ -140,11 +141,11 @@ def log_forward_message(
         return Gaussian(_m, _P), LogMarginalNorm(U, u, eta)
 
     marginal, log_marg_norm = jax.lax.cond(
-        pred=jnp.all(feasible_pass),
+        pred=jnp.all(feasible_flags),
         true_fun=_feasible_marginal,
         false_fun=_not_feasible_marginal,
     )
-    return (GaussMarkov(marginal, kernels), log_marg_norm, value_fns, log_fwd_msgs, feasible_pass)
+    return (GaussMarkov(marginal, kernels), log_marg_norm, value_fns, log_fwd_msgs, feasible_flags)
 
 
 (

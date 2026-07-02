@@ -227,7 +227,7 @@ def _kl_between_gauss_markovs(
             + 0.5 * logdet(ref_Sigma)
             - 0.5 * logdet(Sigma)
         )
-        return kl_value, kl_value
+        return kl_value, None
 
     init_kl_value = kl_between_marginals(gauss_markov.marginal, ref_gauss_markov.marginal)
 
@@ -255,9 +255,23 @@ class ParamStruct(NamedTuple):
 
 
 class LineSearchState(NamedTuple):
+    """Best-so-far state carried through the line search.
+
+    Attributes:
+        param: ParamStruct
+            The temperature (and its current bracket) achieving the smallest
+            slack magnitude seen so far.
+        fn_val: float
+            Dual objective value at param.
+        slack: float
+            Constraint slack kl_constraint - realized_KL at param.
+        feasible: bool
+            Whether any feasible temperature has been accepted.
+    """
+
     param: ParamStruct
     fn_val: float
-    gd_val: float
+    slack: float
     feasible: bool
 
 
@@ -270,67 +284,92 @@ def line_search(
     max_param=1e14,
     max_iter=100,
 ) -> Tuple[float, float, float, bool]:
+    """Bracket a temperature that drives the constraint slack to (near) zero.
 
+    Each iteration evaluates the dual objective and the constraint slack once
+    at the current temperature and bisects the bracket in log-space. The slack
+    sign selects the direction: positive slack means the realized KL is below
+    the constraint (the step is too conservative), so the temperature is
+    reduced; negative slack means the trust region is violated, so the
+    temperature is increased. The feasible point with the smallest |slack| seen
+    is retained and returned.
+
+    Args:
+        init_param: float
+            Initial temperature at which the search starts.
+        fun: Callable
+            Dual objective temperature -> value; one full message pass.
+        grad: Callable
+            Constraint slack temperature -> (kl_constraint - realized_KL); one
+            full message pass. Returns +inf on an infeasible step.
+        rtol: float
+            Absolute tolerance on |slack| for termination.
+        min_param: float
+            Lower bound of the temperature bracket.
+        max_param: float
+            Upper bound of the temperature bracket.
+        max_iter: int
+            Maximum number of bisection iterations.
+
+    Returns:
+        param: float
+            The accepted temperature.
+        fn_val: float
+            The dual objective at param.
+        slack: float
+            The constraint slack at param.
+        feasible: bool
+            Whether a feasible temperature was accepted.
+    """
+
+    init_paramstruct = ParamStruct(val=init_param, min=min_param, max=max_param)
     state = LineSearchState(
-        param=ParamStruct(
-            val=init_param,
-            min=min_param,
-            max=max_param,
-        ),
+        param=init_paramstruct,
         fn_val=jnp.inf,
-        gd_val=jnp.inf,
+        slack=jnp.inf,
         feasible=False,
     )
 
-    param = ParamStruct(
-        val=init_param,
-        min=min_param,
-        max=max_param,
-    )
-
     def regularize(args):
-        param, state = args
+        param, state, _fn_val, _slack = args
         return increase_param(param), state
 
     def update(args):
-        param, state = args
-
-        fn_val = fun(param.val)
-        gd_val = grad(param.val)
+        param, state, fn_val, slack = args
 
         state = jax.lax.cond(
-            jnp.abs(gd_val) < jnp.abs(state.gd_val),
-            lambda _: LineSearchState(param, fn_val, gd_val, True),
+            jnp.abs(slack) < jnp.abs(state.slack),
+            lambda _: LineSearchState(param, fn_val, slack, True),
             lambda _: state,
             None,
         )
 
-        param = jax.lax.cond(pred=gd_val > 0.0, true_fun=reduce_param, false_fun=increase_param, operand=param)
+        param = jax.lax.cond(pred=slack > 0.0, true_fun=reduce_param, false_fun=increase_param, operand=param)
         return param, state
 
     def _iteration(carry):
         param, state = carry
 
         fn_val = fun(param.val)
-        gd_val = grad(param.val)
+        slack = grad(param.val)
 
-        nan_condition = jnp.logical_or(jnp.isnan(fn_val), jnp.isnan(gd_val))
-        inf_condition = jnp.logical_or(jnp.isinf(fn_val), jnp.isinf(gd_val))
+        nan_condition = jnp.logical_or(jnp.isnan(fn_val), jnp.isnan(slack))
+        inf_condition = jnp.logical_or(jnp.isinf(fn_val), jnp.isinf(slack))
 
         return jax.lax.cond(
             pred=jnp.logical_or(nan_condition, inf_condition),
             true_fun=regularize,
             false_fun=update,
-            operand=(param, state),
+            operand=(param, state, fn_val, slack),
         )
 
     _, state = bounded_while_loop(
-        cond_fun=lambda x: jnp.abs(x[-1].gd_val) > rtol,
+        cond_fun=lambda x: jnp.abs(x[-1].slack) > rtol,
         body_fun=_iteration,
-        init_val=(param, state),
+        init_val=(init_paramstruct, state),
         maxiter=max_iter,
     )
-    return state.param.val, state.fn_val, state.gd_val, state.feasible
+    return state.param.val, state.fn_val, state.slack, state.feasible
 
 
 def reduce_param(param) -> ParamStruct:

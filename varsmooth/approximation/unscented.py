@@ -17,7 +17,7 @@ def quadratize(
     q: Gaussian,
     alpha: float = 1.0,
     beta: float = 0.0,
-    kappa: float = None,
+    kappa: Optional[float] = None,
 ):
     _get_sigma_points = lambda m, chol_P: get_sigma_points(m, chol_P, alpha, beta, kappa)
     return quadratize_any(fun, q, _get_sigma_points)
@@ -28,7 +28,7 @@ def linearize(
     q: Gaussian,
     alpha: float = 1.0,
     beta: float = 0.0,
-    kappa: float = None,
+    kappa: Optional[float] = None,
 ):
     _get_sigma_points = lambda m, chol_P: get_sigma_points(m, chol_P, alpha, beta, kappa)
 

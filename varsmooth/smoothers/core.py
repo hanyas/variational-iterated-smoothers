@@ -160,9 +160,10 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                     damping,
                 )
 
-            def dual_gradient_fn(temperature):
+            def constraint_slack_fn(temperature):
+                """Constraint slack on the proposed move: kl_constraint - realized_KL."""
                 damping = temperature / (1.0 + temperature)
-                posterior, _, _, _, feasible_pass = log_message_fn(
+                posterior, _, _, _, feasible_flags = log_message_fn(
                     log_prior,
                     log_transition,
                     log_observation,
@@ -170,7 +171,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                     damping,
                 )
 
-                def compute_gradient():
+                def compute_slack():
                     kl_div = kl_fn(
                         marginals=std_marginal_fn(posterior),
                         gauss_markov=posterior,
@@ -179,8 +180,8 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                     return kl_constraint - kl_div
 
                 return jax.lax.cond(
-                    jnp.all(feasible_pass),
-                    lambda _: compute_gradient(),
+                    jnp.all(feasible_flags),
+                    lambda _: compute_slack(),
                     lambda _: jnp.inf,
                     operand=None,
                 )
@@ -211,7 +212,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
             temperature, dual_value, _, line_search_feasible = line_search(
                 init_temperature,
                 dual_objective_fn,
-                dual_gradient_fn,
+                constraint_slack_fn,
                 rtol=0.1 * kl_constraint,
             )
 
