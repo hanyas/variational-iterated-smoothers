@@ -8,9 +8,9 @@ import time
 
 HERE = Path(__file__).resolve().parent
 SCRIPTS = [
-    ("exp1_recovery.py", "exact recovery + modularity   -> table_linear_gaussian.tex"),
-    ("exp2_proximal.py", "proximal / trust-region       -> fig_lg_convergence.pdf, fig_lg_damping.pdf"),
-    ("exp3_interpolation.py", "beta-interpolation       -> fig_lg_interpolation.pdf"),
+    ("exp1_recovery.py", "exact recovery + modularity"),
+    ("exp2_proximal.py", "proximal / trust-region convergence"),
+    ("exp3_interpolation.py", "entropic-proximal beta-interpolation"),
 ]
 
 
