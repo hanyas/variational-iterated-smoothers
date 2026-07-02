@@ -28,6 +28,7 @@ def get_sigma_points(m: Array, chol_P: Array) -> SigmaPoints:
 def _cubature_weights(
     num_dim: int,
 ) -> tuple[Array, Array, Array]:
+    """Return the spherical-cubature weights and unit sigma points in num_dim dimensions."""
     I_dim = jnp.eye(num_dim)
     wm = jnp.ones(shape=(2 * num_dim,)) / (2 * num_dim)
     xi = jnp.concatenate([I_dim, -I_dim], axis=0) * num_dim**0.5

@@ -44,6 +44,7 @@ def get_sigma_points(m: Array, chol_P: Array, alpha: float, beta: float, kappa: 
 
 
 def _unscented_weights(num_dim: int, alpha: float, beta: float, kappa: float | None) -> tuple[Array, Array, Array]:
+    """Return the unscented mean/covariance weights and unit sigma points in num_dim dimensions."""
     lamda = alpha**2 * (num_dim + kappa) - num_dim
     wm = jnp.full(2 * num_dim + 1, 1 / (2 * (num_dim + lamda)))
 

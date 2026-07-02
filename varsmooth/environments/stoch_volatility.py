@@ -8,19 +8,19 @@ __all__ = ["make_parameters", "get_data"]
 
 
 def _transition_function(x, mu, phi):
-    """Deterministic transition function used in the state space model
-    Parameters
-    ----------
-    x: array_like
-        The current state
-    mu: float
-        Long-run mean log-volatility
-    phi: float
-        Autoregressive persistence
-    Returns
-    -------
-    out: array_like
-        The transitioned state
+    """Deterministic transition function used in the state space model.
+
+    Args:
+        x: array_like
+            The current state
+        mu: float
+            Long-run mean log-volatility
+        phi: float
+            Autoregressive persistence
+
+    Returns:
+        array_like
+            The transitioned state
     """
     return mu + phi * (x - mu)
 
@@ -30,16 +30,15 @@ def _transition_function_dx(x, mu, phi):
 
 
 def _observation_mean_function(x):
-    """
-    Returns the (zero) conditional mean of the stochastic-volatility observation
-    Parameters
-    ----------
-    x: array_like
-        The current state
-    Returns
-    -------
-    out: array_like
-        The conditional mean E[y | x] = 0
+    """Returns the (zero) conditional mean of the stochastic-volatility observation.
+
+    Args:
+        x: array_like
+            The current state
+
+    Returns:
+        array_like
+            The conditional mean E[y | x] = 0
     """
     return jnp.zeros(1)
 
@@ -49,48 +48,48 @@ def _observation_mean_function_dx(x):
 
 
 def _observation_covariance_function(x):
-    """
-    Returns the state-dependent conditional covariance Cov[y | x] = exp(x)
-    Parameters
-    ----------
-    x: array_like
-        The current state
-    Returns
-    -------
-    out: array_like
-        The conditional covariance matrix diag(exp(x))
+    """Returns the state-dependent conditional covariance Cov[y | x] = exp(x).
+
+    Args:
+        x: array_like
+            The current state
+
+    Returns:
+        array_like
+            The conditional covariance matrix diag(exp(x))
     """
     return jnp.diag(jnp.exp(x))
 
 
 def make_parameters(mu, phi, sigma):
     """Builds the univariate stochastic-volatility model.
+
     The latent log-volatility is a stationary AR(1) process and the sensor is zero-mean with a
     state-dependent variance:
         x_t | x_{t-1} ~ N(mu + phi (x_{t-1} - mu), Q),  Q = sigma ** 2
         y_t   | x_t   ~ N(0, exp(x_t))
-    Parameters
-    ----------
-    mu: float
-        Long-run mean log-volatility
-    phi: float
-        Autoregressive persistence
-    sigma: float
-        Transition (log-volatility) noise standard deviation
-    Returns
-    -------
-    Q: array_like
-        The transition covariance matrix
-    observation_covariance_function: callable
-        The state-dependent observation covariance (replaces the constant R of additive models)
-    transition_function: callable
-        The transition function
-    observation_mean_function: callable
-        The (zero) observation mean function (replaces the observation function of additive models)
-    transition_function_dx: callable
-        The derivative of transition function
-    observation_mean_function_dx: callable
-        The derivative of the observation mean function
+
+    Args:
+        mu: float
+            Long-run mean log-volatility
+        phi: float
+            Autoregressive persistence
+        sigma: float
+            Transition (log-volatility) noise standard deviation
+
+    Returns:
+        Q: array_like
+            The transition covariance matrix
+        observation_covariance_function: callable
+            The state-dependent observation covariance (replaces the constant R of additive models)
+        transition_function: callable
+            The transition function
+        observation_mean_function: callable
+            The (zero) observation mean function (replaces the observation function of additive models)
+        transition_function_dx: callable
+            The derivative of transition function
+        observation_mean_function_dx: callable
+            The derivative of the observation mean function
     """
 
     Q = jnp.array([[sigma**2]])
@@ -117,29 +116,29 @@ def _get_data(x, mu, phi, sigma, state_noise, obs_noise, observations, true_stat
 
 
 def get_data(x0, mu, phi, sigma, T, random_state=None):
-    """
-    Parameters
-    ----------
-    x0: float
-        true initial state
-    mu: float
-        long-run mean log-volatility
-    phi: float
-        autoregressive persistence
-    sigma: float
-        transition noise standard deviation
-    T: int
-        number of time steps
-    random_state: np.random.RandomState or int, optional
-        numpy random state
-    Returns
-    -------
-    ts: array_like
-        array of time steps
-    true_states: array_like
-        array of true states
-    observations: array_like
-        array of observations
+    """Simulate a log-volatility trajectory and its observations.
+
+    Args:
+        x0: float
+            true initial state
+        mu: float
+            long-run mean log-volatility
+        phi: float
+            autoregressive persistence
+        sigma: float
+            transition noise standard deviation
+        T: int
+            number of time steps
+        random_state: np.random.RandomState or int, optional
+            numpy random state
+
+    Returns:
+        ts: array_like
+            array of time steps
+        true_states: array_like
+            array of true states
+        observations: array_like
+            array of observations
     """
     if random_state is None or isinstance(random_state, int):
         random_state = np.random.RandomState(random_state)

@@ -24,6 +24,18 @@ from varsmooth.utils import symmetrize
 
 
 def kl_between_marginals(p, q):
+    """Return the KL divergence KL(p || q) between two Gaussian marginals.
+
+    Args:
+        p: Gaussian
+            The first argument of the KL, integrated over.
+        q: Gaussian
+            The second, reference argument of the KL.
+
+    Returns:
+        Array
+            The scalar KL divergence KL(p || q).
+    """
     dim = p.mean.shape[0]
     diff = q.mean - p.mean
     # Factor q.cov once and reuse it for the trace, quadratic, and logdet terms.
@@ -43,6 +55,36 @@ def statistical_expansion(
     kernels: AffineGaussian,
     marginals: Gaussian,
 ) -> tuple[LogPrior, LogTransition, LogObservation]:
+    """Expand the model into quadratic log-potentials around a nominal posterior.
+
+    Evaluates the prior, transition, and observation expansion functions at the
+    nominal marginals and kernels to produce the quadratic log-potentials the
+    message passes consume. The prior uses the root marginal x_0, each
+    transition the preceding marginals x_0..x_{T-1} paired with the kernels, and
+    each observation the marginals x_1..x_T it explains.
+
+    Args:
+        observations: Array
+            Observation sequence of leading shape (T,).
+        log_prior_fn: Callable
+            Maps the root marginal to a LogPrior.
+        log_transition_fn: Callable
+            Maps the preceding marginals and kernels to batched LogTransition.
+        log_observation_fn: Callable
+            Maps the observations and their marginals to batched LogObservation.
+        kernels: AffineGaussian
+            Nominal Gauss-Markov kernels of leading shape (T,) to expand around.
+        marginals: Gaussian
+            Nominal marginals of leading shape (T + 1,) to expand around.
+
+    Returns:
+        log_prior: LogPrior
+            Quadratic log-prior over the root state.
+        log_transition: LogTransition
+            Batched quadratic log-transitions of leading shape (T,).
+        log_observation: LogObservation
+            Batched quadratic log-observations of leading shape (T,).
+    """
 
     init_marginal = none_or_idx(marginals, 0)
     prev_marginals = none_or_shift(marginals, -1)
@@ -61,6 +103,30 @@ def free_energy(
     marginals: Gaussian,
     kernels: AffineGaussian,
 ):
+    """Evaluate the variational free energy (ELBO) of a Gauss-Markov posterior.
+
+    Sums the expected quadratic log-potentials under the posterior marginals --
+    the prior E_q[log p(x_0)], the observations sum_k E_q[log p(y_k | x_k)], and
+    the transitions sum_k E_q[log p(x_{k+1} | x_k)] over the pairwise marginals
+    -- and adds the chain entropy H(x_0) + sum_k H(x_{k+1} | x_k).
+
+    Args:
+        log_prior: LogPrior
+            Quadratic log-prior over the root state.
+        log_transition: LogTransition
+            Batched quadratic log-transitions of leading shape (T,).
+        log_observation: LogObservation
+            Batched quadratic log-observations of leading shape (T,).
+        marginals: Gaussian
+            Posterior marginals of leading shape (T + 1,).
+        kernels: AffineGaussian
+            Posterior Gauss-Markov kernels of leading shape (T,); their maps set
+            the cross-covariances and their covariances the conditional entropies.
+
+    Returns:
+        Array
+            The scalar variational free energy.
+    """
     m, P = marginals.mean, marginals.cov
     F, _, Sigma = kernels
 
@@ -314,6 +380,20 @@ def std_backward_message(posterior: GaussMarkov) -> Gaussian:
 
 
 def initialize_reverse_with_forward(forward_markov: GaussMarkov) -> GaussMarkov:
+    """Re-express a forward Gauss-Markov chain as an equivalent reverse chain.
+
+    Propagates the forward marginals and inverts each forward kernel into a
+    reverse kernel q(x_k | x_{k+1}), yielding a reverse Gauss-Markov chain rooted
+    at the leaf marginal x_T that encodes the same joint distribution.
+
+    Args:
+        forward_markov: GaussMarkov
+            The forward chain (root marginal x_0 + forward kernels).
+
+    Returns:
+        GaussMarkov
+            The equivalent reverse chain (leaf marginal x_T + reverse kernels).
+    """
     forward_marginals = std_forward_message(forward_markov)
 
     # reverse kernels q(x_k | x_{k+1}) from forward marginals + forward kernels
@@ -333,12 +413,39 @@ def initialize_reverse_with_forward(forward_markov: GaussMarkov) -> GaussMarkov:
 
 
 def get_marginal(marginal: Gaussian, kernel: AffineGaussian):
+    """Push a Gaussian marginal through an affine-Gaussian kernel.
+
+    Args:
+        marginal: Gaussian
+            The input marginal N(m, P).
+        kernel: AffineGaussian
+            The kernel x -> N(F x + d, Sigma) to propagate through.
+
+    Returns:
+        Gaussian
+            The output marginal N(F m + d, F P F^T + Sigma).
+    """
     m, P = marginal
     F, d, Sigma = kernel
     return Gaussian(mean=F @ m + d, cov=F @ P @ F.T + Sigma)
 
 
 def get_pairwise_marginal(marginal: Gaussian, kernel: AffineGaussian):
+    """Form the joint Gaussian over the pair z = (x_{k+1}, x_k).
+
+    Combines a marginal over x_k with a kernel x_k -> N(F x_k + d, Sigma) into
+    the joint over the stacked pair, ordered with the next state first.
+
+    Args:
+        marginal: Gaussian
+            The marginal N(m, P) over x_k.
+        kernel: AffineGaussian
+            The kernel x_k -> N(F x_k + d, Sigma) to the next state x_{k+1}.
+
+    Returns:
+        Gaussian
+            The joint over z = (x_{k+1}, x_k) of dimension 2 dx.
+    """
     m, P = marginal
     F, d, Sigma = kernel
 
@@ -350,6 +457,23 @@ def get_pairwise_marginal(marginal: Gaussian, kernel: AffineGaussian):
 
 
 def get_conditional(marginal: Gaussian, pairwise: Gaussian):
+    """Extract the affine-Gaussian conditional of the second block given the first.
+
+    Splits the pairwise joint into blocks at the dimension of marginal and
+    returns the kernel u -> N(F u + d, Sigma) mapping the first (conditioning)
+    block u to the second block by Gaussian conditioning.
+
+    Args:
+        marginal: Gaussian
+            Marginal over the first (conditioning) block; only its dimension is
+            used to locate the block split.
+        pairwise: Gaussian
+            The joint over the stacked pair (first block, second block).
+
+    Returns:
+        AffineGaussian
+            The conditional kernel of the second block given the first.
+    """
     dim = marginal.mean.shape[0]
 
     a = pairwise.mean[:dim]
@@ -371,11 +495,43 @@ def get_reverse_kernel(
     kernel: AffineGaussian,
     next_marginal: Gaussian,
 ):
+    """Invert a forward kernel into the reverse kernel q(x_k | x_{k+1}).
+
+    Forms the pairwise joint over (x_{k+1}, x_k) from the marginal over x_k and
+    the forward kernel, then conditions on x_{k+1} to obtain the reverse kernel.
+
+    Args:
+        marginal: Gaussian
+            The marginal over x_k.
+        kernel: AffineGaussian
+            The forward kernel x_k -> N(F x_k + d, Sigma) to x_{k+1}.
+        next_marginal: Gaussian
+            The marginal over x_{k+1} to condition on.
+
+    Returns:
+        AffineGaussian
+            The reverse kernel giving q(x_k | x_{k+1}).
+    """
     pairwise = get_pairwise_marginal(marginal, kernel)
     return get_conditional(next_marginal, pairwise)
 
 
 def merge_messages(fwd_message: ValueFn, bwd_message: LogMessage) -> ValueFn:
+    """Combine a forward value function and a backward message into one potential.
+
+    Adds the matching quadratic components (R + S, r + s, rho + xi) of the two
+    incoming messages.
+
+    Args:
+        fwd_message: ValueFn
+            The forward value function (R, r, rho).
+        bwd_message: LogMessage
+            The backward eliminated-variable message (S, s, xi).
+
+    Returns:
+        ValueFn
+            The merged quadratic potential.
+    """
     return ValueFn(
         R=(fwd_message.R + bwd_message.S),
         r=(fwd_message.r + bwd_message.s),
@@ -384,10 +540,37 @@ def merge_messages(fwd_message: ValueFn, bwd_message: LogMessage) -> ValueFn:
 
 
 def log_to_std_form(potential: ValueFn) -> Gaussian:
+    """Convert a quadratic log-potential to a moment-form Gaussian.
+
+    Maps the information-form potential (R, r, rho) to the Gaussian with
+    covariance R^{-1} and mean R^{-1} r; the constant rho is dropped.
+
+    Args:
+        potential: ValueFn
+            The quadratic log-potential (R, r, rho) with R the precision.
+
+    Returns:
+        Gaussian
+            The moment-form Gaussian N(R^{-1} r, R^{-1}).
+    """
     return Gaussian(mean=jsc.linalg.inv(potential.R) @ potential.r, cov=jsc.linalg.inv(potential.R))
 
 
 def std_to_log_form(dist: Gaussian) -> ValueFn:
+    """Convert a moment-form Gaussian to a normalized quadratic log-potential.
+
+    Maps the Gaussian N(mean, cov) to the information-form potential with
+    precision R = cov^{-1}, linear term r = cov^{-1} mean, and constant rho set
+    so the quadratic equals the Gaussian log density.
+
+    Args:
+        dist: Gaussian
+            The moment-form Gaussian to convert.
+
+    Returns:
+        ValueFn
+            The quadratic log-potential (R, r, rho).
+    """
     return ValueFn(
         R=jsc.linalg.inv(dist.cov),
         r=jsc.linalg.solve(dist.cov, dist.mean),
@@ -401,6 +584,28 @@ def _kl_between_gauss_markovs(
     ref_gauss_markov: GaussMarkov,
     reverse: bool = False,
 ):
+    """Accumulate the KL divergence between two Gauss-Markov chains.
+
+    Returns KL(gauss_markov || ref_gauss_markov): the KL between the boundary
+    marginals plus the expected per-kernel KL contributions summed along the
+    chain, with the kernel expectations taken under marginals.
+
+    Args:
+        marginals: Gaussian
+            Marginals of leading shape (T + 1,) supplying the moments the
+            per-kernel terms are averaged over.
+        gauss_markov: GaussMarkov
+            The first chain, integrated over.
+        ref_gauss_markov: GaussMarkov
+            The reference chain.
+        reverse: bool
+            Scan direction; True walks the chain backward to match a reverse
+            Gauss-Markov chain, False walks it forward.
+
+    Returns:
+        Array
+            The scalar KL divergence between the two chains.
+    """
     dim = gauss_markov.marginal.mean.shape[0]
 
     def body(carry, args):
@@ -435,10 +640,42 @@ def _kl_between_gauss_markovs(
 
 
 def kl_between_reverse_gauss_markovs(marginals, gauss_markov, ref_gauss_markov):
+    """Return the KL divergence between two reverse Gauss-Markov chains.
+
+    Thin wrapper over _kl_between_gauss_markovs with a backward scan.
+
+    Args:
+        marginals: Gaussian
+            Marginals of leading shape (T + 1,) the per-kernel terms average over.
+        gauss_markov: GaussMarkov
+            The first reverse chain, integrated over.
+        ref_gauss_markov: GaussMarkov
+            The reference reverse chain.
+
+    Returns:
+        Array
+            The scalar KL divergence KL(gauss_markov || ref_gauss_markov).
+    """
     return _kl_between_gauss_markovs(marginals, gauss_markov, ref_gauss_markov, True)
 
 
 def kl_between_forward_gauss_markovs(marginals, gauss_markov, ref_gauss_markov):
+    """Return the KL divergence between two forward Gauss-Markov chains.
+
+    Thin wrapper over _kl_between_gauss_markovs with a forward scan.
+
+    Args:
+        marginals: Gaussian
+            Marginals of leading shape (T + 1,) the per-kernel terms average over.
+        gauss_markov: GaussMarkov
+            The first forward chain, integrated over.
+        ref_gauss_markov: GaussMarkov
+            The reference forward chain.
+
+    Returns:
+        Array
+            The scalar KL divergence KL(gauss_markov || ref_gauss_markov).
+    """
     return _kl_between_gauss_markovs(marginals, gauss_markov, ref_gauss_markov, False)
 
 
@@ -506,6 +743,17 @@ def _run_iterations(
 
 
 class ParamStruct(NamedTuple):
+    """Line-search temperature with its current bracketing interval.
+
+    Attributes:
+        val: float
+            The current temperature.
+        min: float
+            Lower end of the bracketing interval.
+        max: float
+            Upper end of the bracketing interval.
+    """
+
     val: float
     min: float
     max: float
@@ -635,11 +883,37 @@ def line_search(
 
 
 def reduce_param(param) -> ParamStruct:
+    """Bisect the temperature bracket downward toward its lower bound.
+
+    Sets the new temperature to the geometric mean of the lower bound and the
+    current value, moving the upper bound down to the current value.
+
+    Args:
+        param: ParamStruct
+            The current temperature and its bracket.
+
+    Returns:
+        ParamStruct
+            The updated temperature and narrowed bracket.
+    """
     # set max to current value
     return ParamStruct(val=jnp.sqrt(param.min * param.val), min=param.min, max=param.val)
 
 
 def increase_param(param) -> ParamStruct:
+    """Bisect the temperature bracket upward toward its upper bound.
+
+    Sets the new temperature to the geometric mean of the current value and the
+    upper bound, moving the lower bound up to the current value.
+
+    Args:
+        param: ParamStruct
+            The current temperature and its bracket.
+
+    Returns:
+        ParamStruct
+            The updated temperature and narrowed bracket.
+    """
     # set min to current value
     return ParamStruct(val=jnp.sqrt(param.val * param.max), min=param.val, max=param.max)
 

@@ -35,7 +35,34 @@ def hybrid_markov_smoother(
     reverse_reference: GaussMarkov,
     temperature: float,
 ) -> Gaussian:
+    """Run one hybrid-Markov pass, merging a forward and a reverse message pass.
 
+    Linearizes the model around the forward reference marginals, runs the
+    backward pass of the forward smoother and the forward pass of the reverse
+    smoother at the damping induced by temperature, then merges their messages
+    and boundaries into updated marginals.
+
+    Args:
+        observations: Array
+            Batched observations of leading shape (T,).
+        log_prior_fn: Callable
+            Maps the root marginal to the quadratic log-prior over x_0.
+        log_transition_fn: Callable
+            Maps reference kernels and marginals to the pairwise quadratic
+            log-transitions.
+        log_observation_fn: Callable
+            Maps observations and marginals to the quadratic log-observations.
+        forward_reference: GaussMarkov
+            The forward Gauss-Markov posterior to expand around.
+        reverse_reference: GaussMarkov
+            The reverse Gauss-Markov posterior to expand around.
+        temperature: float
+            Trust-region temperature t; damping = t / (1 + t).
+
+    Returns:
+        Gaussian
+            The updated per-marginal Gaussians of leading shape (T + 1,).
+    """
     marginals = std_forward_message(forward_reference)
 
     log_prior, log_transition, log_observation = statistical_expansion(
@@ -83,6 +110,31 @@ def update_marginals(
     last_boundary: Gaussian,
     damping: float,
 ):
+    """Merge forward and backward messages into damped, updated marginals.
+
+    Combines the forward and backward messages at the interior marginals, damps
+    them against the current log-marginals, overrides the first and last
+    marginals with the supplied boundaries, and converts the result back to
+    standard (moment) form.
+
+    Args:
+        marginals: Gaussian
+            Current per-marginal Gaussians of leading shape (T + 1,).
+        forward_message: ValueFn
+            Per-marginal forward value functions produced by log_forward_message.
+        backward_message: LogMessage
+            Per-step backward messages produced by log_backward_message.
+        first_boundary: Gaussian
+            Updated first marginal (root x_0) from the forward posterior.
+        last_boundary: Gaussian
+            Updated last marginal (leaf x_T) from the reverse posterior.
+        damping: float
+            Trust-region damping in [0, 1); damping = t / (1 + t).
+
+    Returns:
+        Gaussian
+            The updated per-marginal Gaussians of leading shape (T + 1,).
+    """
     log_marginals = jax.vmap(std_to_log_form)(marginals)
     log_messages = jax.vmap(merge_messages)(
         none_or_shift(none_or_shift(forward_message, -1), 1),
@@ -147,47 +199,51 @@ def iterated_hybrid_markov_smoother(
     return_history: bool = False,
     verbose: bool = True,
 ):
-    """
-    Iterated hybrid-markov smoother with early stopping based on temperature.
+    """Run the iterated hybrid-Markov smoother to convergence.
+
+    Alternates a statistical expansion around the merged marginals with a
+    trust-region step that merges a forward and a reverse message pass, stopping
+    early once the line-search temperature drops to min_temperature or
+    max_iterations is reached.
 
     Args:
-        observations:
-            Array of observations
-        log_prior_fn:
-            Function to compute log prior
-        log_transition_fn:
-            Function to compute log transition
-        log_observation_fn:
-            Function to compute log observation likelihood
-        init_forward_posterior:
-            Initial forward posterior estimate
-        init_reverse_posterior:
-            Initial reverse posterior estimate
-        kl_constraint:
-            KL divergence constraint for the optimization
-        init_temperature:
-            Initial temperature for line search
-        min_temperature:
-            Minimum temperature threshold for early stopping
-        max_iterations:
-            Maximum number of iterations
+        observations: Array
+            Batched observations of leading shape (T,).
+        log_prior_fn: Callable
+            Maps the root marginal to the quadratic log-prior over x_0.
+        log_transition_fn: Callable
+            Maps reference kernels and marginals to the pairwise quadratic
+            log-transitions.
+        log_observation_fn: Callable
+            Maps observations and marginals to the quadratic log-observations.
+        init_forward_posterior: GaussMarkov
+            Initial forward Gauss-Markov posterior.
+        init_reverse_posterior: GaussMarkov
+            Initial reverse Gauss-Markov posterior.
+        kl_constraint: float
+            Per-iteration trust-region KL bound.
+        init_temperature: float
+            Initial line-search temperature.
+        min_temperature: float
+            Early-stopping threshold on the temperature.
+        max_iterations: int
+            Maximum number of iterations.
+        return_history: bool
+            If True, run a fixed-length scan and also return stacked
+            per-iteration diagnostics; disables verbose logging.
+        verbose: bool
+            If True (and not return_history), print per-iteration diagnostics.
 
     Returns:
-        Optimal marginals after convergence
+        marginals: Gaussian
+            The converged per-marginal Gaussians of leading shape (T + 1,).
+        history: dict
+            Stacked per-iteration diagnostics, returned only when
+            return_history is True.
     """
 
     def single_iteration(carry, iteration_idx):
-        """
-        Perform a single iteration of the hybrid-markov update.
-
-        Args:
-            carry: Tuple of (reference_marginals, forward_reference, reverse_reference)
-            iteration_idx: Current iteration index (for logging)
-
-        Returns:
-            updated_carry: Updated state tuple
-            final_temperature: Temperature from line search
-        """
+        """Perform a single trust-region iteration of the hybrid-Markov update."""
         reference_marginals, forward_reference, reverse_reference = carry
 
         # Step 1: Compute statistical expansion (around the merged marginals)

@@ -8,19 +8,19 @@ __all__ = ["make_parameters", "get_data"]
 
 
 def _transition_function(x, phi0, mu0):
-    """Deterministic transition function used in the state space model
-    Parameters
-    ----------
-    x: array_like
-        The current state
-    phi0: float
-        Autoregressive coefficient
-    mu0: float
-        Long-run mean of the latent state
-    Returns
-    -------
-    out: array_like
-        The transitioned state
+    """Deterministic transition function used in the state space model.
+
+    Args:
+        x: array_like
+            The current state
+        phi0: float
+            Autoregressive coefficient
+        mu0: float
+            Long-run mean of the latent state
+
+    Returns:
+        array_like
+            The transitioned state
     """
     return phi0 * x + (1.0 - phi0) * mu0
 
@@ -30,18 +30,17 @@ def _transition_function_dx(x, phi0, mu0):
 
 
 def _observation_function(x, beta):
-    """
-    Returns the cubic sensor observation as a function of the state
-    Parameters
-    ----------
-    x: array_like
-        The current state
-    beta: float
-        The observation gain
-    Returns
-    -------
-    y: array_like
-        The cubic observation beta * x ** 3
+    """Returns the cubic sensor observation as a function of the state.
+
+    Args:
+        x: array_like
+            The current state
+        beta: float
+            The observation gain
+
+    Returns:
+        array_like
+            The cubic observation beta * x ** 3
     """
     return beta * x**3
 
@@ -52,35 +51,36 @@ def _observation_function_dx(x, beta):
 
 def make_parameters(phi0, mu0, sigma0, beta, r):
     """Builds the cubic sensor model of (Katayama, 2013).
+
     The latent state is a stationary scalar AR(1) process and the sensor is cubic:
         x_t | x_{t-1} ~ N(phi0 x_{t-1} + (1 - phi0) mu0, Q),  Q = (1 - phi0 ** 2) sigma0
         y_t   | x_t   ~ N(beta x_t ** 3, R),                  R = r ** 2
-    Parameters
-    ----------
-    phi0: float
-        Autoregressive coefficient
-    mu0: float
-        Long-run mean of the latent state
-    sigma0: float
-        Stationary (prior) variance of the latent state
-    beta: float
-        Observation gain
-    r: float
-        Observation error standard deviation
-    Returns
-    -------
-    Q: array_like
-        The transition covariance matrix
-    R: array_like
-        The observation covariance matrix
-    transition_function: callable
-        The transition function
-    observation_function: callable
-        The observation function
-    transition_function_dx: callable
-        The derivative of transition function
-    observation_function_dx: callable
-        The derivative of observation function
+
+    Args:
+        phi0: float
+            Autoregressive coefficient
+        mu0: float
+            Long-run mean of the latent state
+        sigma0: float
+            Stationary (prior) variance of the latent state
+        beta: float
+            Observation gain
+        r: float
+            Observation error standard deviation
+
+    Returns:
+        Q: array_like
+            The transition covariance matrix
+        R: array_like
+            The observation covariance matrix
+        transition_function: callable
+            The transition function
+        observation_function: callable
+            The observation function
+        transition_function_dx: callable
+            The derivative of transition function
+        observation_function_dx: callable
+            The derivative of observation function
     """
 
     Q = jnp.array([[(1.0 - phi0**2) * sigma0]])
@@ -110,33 +110,33 @@ def _get_data(x, phi0, mu0, beta, sq, r, state_noise, obs_noise, observations, t
 
 
 def get_data(x0, phi0, mu0, sigma0, beta, r, T, random_state=None):
-    """
-    Parameters
-    ----------
-    x0: float
-        true initial state
-    phi0: float
-        autoregressive coefficient
-    mu0: float
-        long-run mean of the latent state
-    sigma0: float
-        stationary (prior) variance of the latent state
-    beta: float
-        observation gain
-    r: float
-        observation model standard deviation
-    T: int
-        number of time steps
-    random_state: np.random.RandomState or int, optional
-        numpy random state
-    Returns
-    -------
-    ts: array_like
-        array of time steps
-    true_states: array_like
-        array of true states
-    observations: array_like
-        array of observations
+    """Simulate an AR(1) trajectory and its cubic-sensor observations.
+
+    Args:
+        x0: float
+            true initial state
+        phi0: float
+            autoregressive coefficient
+        mu0: float
+            long-run mean of the latent state
+        sigma0: float
+            stationary (prior) variance of the latent state
+        beta: float
+            observation gain
+        r: float
+            observation model standard deviation
+        T: int
+            number of time steps
+        random_state: np.random.RandomState or int, optional
+            numpy random state
+
+    Returns:
+        ts: array_like
+            array of time steps
+        true_states: array_like
+            array of true states
+        observations: array_like
+            array of observations
     """
     if random_state is None or isinstance(random_state, int):
         random_state = np.random.RandomState(random_state)

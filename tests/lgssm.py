@@ -4,10 +4,34 @@ import numpy as np
 
 
 def transition_fn(x, A):
+    """Apply the linear transition map A to the state x.
+
+    Args:
+        x: Array
+            State vector of shape (dim_x,).
+        A: Array
+            Transition matrix of shape (dim_x, dim_x).
+
+    Returns:
+        Array
+            The propagated state A x of shape (dim_x,).
+    """
     return jnp.dot(A, x)
 
 
 def observation_fn(x, H):
+    """Apply the linear observation map H to the state x.
+
+    Args:
+        x: Array
+            State vector of shape (dim_x,).
+        H: Array
+            Observation matrix of shape (dim_y, dim_x).
+
+    Returns:
+        Array
+            The noise-free observation H x of shape (dim_y,).
+    """
     return jnp.dot(H, x)
 
 
@@ -22,6 +46,40 @@ def simulate(
     num_steps: int,
     random_state=None,
 ):
+    """Simulate a trajectory from a linear-Gaussian state-space model.
+
+    Rolls the affine transition x -> A x + b with Gaussian noise of covariance
+    Omega forward from x0, emitting an affine observation H x + e with Gaussian
+    noise of covariance Delta at each of the num_steps states after the initial
+    one.
+
+    Args:
+        x0: Array
+            Initial state of shape (dim_x,).
+        A: Array
+            Transition matrix of shape (dim_x, dim_x).
+        b: Array
+            Transition offset of shape (dim_x,).
+        Omega: Array
+            Transition noise covariance of shape (dim_x, dim_x).
+        H: Array
+            Observation matrix of shape (dim_y, dim_x).
+        e: Array
+            Observation offset of shape (dim_y,).
+        Delta: Array
+            Observation noise covariance of shape (dim_y, dim_y).
+        num_steps: int
+            Number of transition/observation steps to simulate.
+        random_state: int or np.random.RandomState or None
+            Seed or NumPy random state used to draw the noise; an int or None
+            is promoted to a fresh np.random.RandomState.
+
+    Returns:
+        true_states: Array
+            Simulated states of shape (num_steps + 1, dim_x), including x0.
+        observations: Array
+            Simulated observations of shape (num_steps, dim_y).
+    """
     if random_state is None or isinstance(random_state, int):
         random_state = np.random.RandomState(random_state)
 

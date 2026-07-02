@@ -47,18 +47,24 @@ def get_sigma_points(m: Array, chol_P: Array, order: int) -> SigmaPoints:
 
 
 def mvhermgauss(H: int, D: int):
-    """
-    This function is adapted from GPflow: https://github.com/GPflow/GPflow
+    """Return evaluation locations and weights for multivariate Gauss-Hermite quadrature.
 
-    Return the evaluation locations 'xn', and weights 'wn' for a multivariate
-    Gauss-Hermite quadrature.
+    Adapted from GPflow: https://github.com/GPflow/GPflow
 
-    The outputs can be used to approximate the following type of integral:
-    int exp(-x)*f(x) dx ~ sum_i w[i,:]*f(x[i,:])
+    The outputs approximate integrals of the form
+    int exp(-x) f(x) dx ~ sum_i w[i, :] f(x[i, :]).
 
-    :param H: Number of Gauss-Hermite evaluation points.
-    :param D: Number of input dimensions. Needs to be known at call-time.
-    :return: eval_locations 'x' (H**DxD), weights 'w' (H**D)
+    Args:
+        H: int
+            Number of Gauss-Hermite evaluation points per dimension.
+        D: int
+            Number of input dimensions; must be known at call time.
+
+    Returns:
+        x: Array
+            Evaluation locations of shape (H**D, D).
+        w: Array
+            Quadrature weights of shape (H**D,).
     """
     gh_x, gh_w = hermgauss(H)
     x = jnp.array(list(itertools.product(*(gh_x,) * D)))  # H**DxD
@@ -67,9 +73,7 @@ def mvhermgauss(H: int, D: int):
 
 
 def _gauss_hermite_weights(num_dim, order):
-    """
-    Return weights and sigma-points for Gauss-Hermite cubature
-    """
+    """Return the Gauss-Hermite mean/covariance weights and unit sigma points."""
     # sigma_pts, weights = hermgauss(order)  # Gauss-Hermite sigma points and weights
     sigma_pts, weights = mvhermgauss(order, num_dim)
     sigma_pts = jnp.sqrt(2) * sigma_pts.T

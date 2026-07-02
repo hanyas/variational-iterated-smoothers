@@ -13,21 +13,27 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
     """Build a direction's smoother suite from its message-passing primitives.
 
     Args:
-        log_message_fn:
-            ``log_forward_message`` (reverse smoother) or
-            ``log_backward_message`` (forward smoother). Maps
-            ``(log_prior, log_transition, log_observation, reference, damping)``
-            to ``(posterior, log_marg_norm, value_fns, log_msgs, feasible)``.
-        std_marginal_fn:
-            ``std_backward_message`` (reverse) or
-            ``std_forward_message`` (forward); marginals of a Gauss-Markov chain.
-        kl_fn:
-            ``kl_between_reverse_gauss_markovs`` (reverse) or
-            ``kl_between_forward_gauss_markovs`` (forward).
+        log_message_fn: Callable
+            log_forward_message (reverse smoother) or log_backward_message
+            (forward smoother). Maps (log_prior, log_transition,
+            log_observation, reference, damping) to (posterior, log_marg_norm,
+            value_fns, log_msgs, feasible).
+        std_marginal_fn: Callable
+            std_backward_message (reverse) or std_forward_message (forward);
+            the marginals of a Gauss-Markov chain.
+        kl_fn: Callable
+            kl_between_reverse_gauss_markovs (reverse) or
+            kl_between_forward_gauss_markovs (forward).
 
     Returns:
-        Tuple ``(single_pass_smoother, dual_objective, log_evidence,
-        iterated_smoother)``.
+        single_pass_smoother: Callable
+            One damped message pass around a reference posterior.
+        dual_objective: Callable
+            The trust-region dual value at a given damping.
+        log_evidence: Callable
+            The undamped marginal log-evidence at the reference root.
+        iterated_smoother: Callable
+            The full iterated KL-constrained smoother.
     """
 
     def single_pass_smoother(
@@ -38,6 +44,28 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         reference_posterior,
         temperature,
     ):
+        """Run one damped message pass around a reference posterior.
+
+        Args:
+            observations: Array
+                Batched observations of leading shape (T,).
+            log_prior_fn: Callable
+                Maps the root marginal to the quadratic log-prior over x_0.
+            log_transition_fn: Callable
+                Maps reference kernels and marginals to the pairwise quadratic
+                log-transitions.
+            log_observation_fn: Callable
+                Maps observations and marginals to the quadratic
+                log-observations.
+            reference_posterior: GaussMarkov
+                The Gauss-Markov posterior to expand around.
+            temperature: float
+                Trust-region temperature t; damping = t / (1 + t).
+
+        Returns:
+            GaussMarkov
+                The updated Gauss-Markov posterior after a single pass.
+        """
         marginals = std_marginal_fn(reference_posterior)
         log_prior, log_transition, log_observation = statistical_expansion(
             observations,
@@ -65,6 +93,30 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         kl_constraint,
         damping,
     ):
+        """Evaluate the trust-region dual objective at a given damping.
+
+        Runs one message pass and, if every step is feasible, returns
+        damping * kl_constraint plus the root log-normalizer, rescaled by
+        1 / (1 - damping); returns +inf if any step is infeasible.
+
+        Args:
+            log_prior: LogPrior
+                Quadratic log-prior over the boundary state.
+            log_transition: LogTransition
+                Batched pairwise quadratic log-transitions of leading shape (T,).
+            log_observation: LogObservation
+                Batched quadratic log-observations of leading shape (T,).
+            reference_posterior: GaussMarkov
+                The Gauss-Markov posterior to expand around.
+            kl_constraint: float
+                Trust-region KL bound entering the dual.
+            damping: float
+                Trust-region damping in [0, 1); damping = t / (1 + t).
+
+        Returns:
+            Array
+                The scalar dual objective value, or +inf if infeasible.
+        """
         _, log_norm, _, _, feasible = log_message_fn(
             log_prior,
             log_transition,
@@ -89,6 +141,25 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         reference_posterior,
         damping,
     ):
+        """Evaluate the marginal log-normalizer at the reference root.
+
+        Args:
+            log_prior: LogPrior
+                Quadratic log-prior over the boundary state.
+            log_transition: LogTransition
+                Batched pairwise quadratic log-transitions of leading shape (T,).
+            log_observation: LogObservation
+                Batched quadratic log-observations of leading shape (T,).
+            reference_posterior: GaussMarkov
+                The Gauss-Markov posterior to expand around.
+            damping: float
+                Trust-region damping in [0, 1); damping = t / (1 + t).
+
+        Returns:
+            Array
+                The scalar log-normalizer -0.5 m^T U m + m^T u + eta evaluated
+                at the reference root mean m.
+        """
         _, log_norm, _, _, _ = log_message_fn(
             log_prior,
             log_transition,
@@ -106,6 +177,22 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         log_observation,
         reference_posterior,
     ):
+        """Return the undamped marginal log-evidence (log-normalizer at damping 0).
+
+        Args:
+            log_prior: LogPrior
+                Quadratic log-prior over the boundary state.
+            log_transition: LogTransition
+                Batched pairwise quadratic log-transitions of leading shape (T,).
+            log_observation: LogObservation
+                Batched quadratic log-observations of leading shape (T,).
+            reference_posterior: GaussMarkov
+                The Gauss-Markov posterior to expand around.
+
+        Returns:
+            Array
+                The scalar log-evidence at the reference root mean.
+        """
         return log_normalizer(
             log_prior,
             log_transition,
@@ -138,7 +225,47 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         return_history=False,
         verbose=True,
     ):
-        """Iterated KL-constrained smoother with temperature-based early stopping."""
+        """Run the iterated KL-constrained smoother to convergence.
+
+        Alternates a statistical expansion around the current posterior with a
+        trust-region step, stopping early once the line-search temperature drops
+        to min_temperature or max_iterations is reached.
+
+        Args:
+            observations: Array
+                Batched observations of leading shape (T,).
+            log_prior_fn: Callable
+                Maps the root marginal to the quadratic log-prior over x_0.
+            log_transition_fn: Callable
+                Maps reference kernels and marginals to the pairwise quadratic
+                log-transitions.
+            log_observation_fn: Callable
+                Maps observations and marginals to the quadratic
+                log-observations.
+            init_posterior: GaussMarkov
+                Initial Gauss-Markov posterior to start the iterations from.
+            kl_constraint: float
+                Per-iteration trust-region KL bound.
+            init_temperature: float
+                Initial line-search temperature.
+            min_temperature: float
+                Early-stopping threshold on the temperature.
+            max_iterations: int
+                Maximum number of iterations.
+            return_history: bool
+                If True, run a fixed-length scan and also return stacked
+                per-iteration diagnostics; disables verbose logging.
+            verbose: bool
+                If True (and not return_history), print per-iteration
+                diagnostics.
+
+        Returns:
+            posterior: GaussMarkov
+                The converged Gauss-Markov posterior.
+            history: dict
+                Stacked per-iteration diagnostics, returned only when
+                return_history is True.
+        """
 
         def single_iteration(reference, iteration_idx):
             marginals = std_marginal_fn(reference)
