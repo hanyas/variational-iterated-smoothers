@@ -440,6 +440,69 @@ def kl_between_forward_gauss_markovs(marginals, gauss_markov, ref_gauss_markov):
     return _kl_between_gauss_markovs(marginals, gauss_markov, ref_gauss_markov, False)
 
 
+def _run_iterations(
+    single_iteration_fn: Callable,
+    init_state,
+    init_temperature: float,
+    min_temperature: float,
+    max_iterations: int,
+    return_history: bool,
+):
+    """Drive an iterated smoother to convergence, shared across directions.
+
+    Runs single_iteration_fn from init_state until the line-search temperature
+    drops to min_temperature or max_iterations is reached. With
+    return_history=True the iterations run under a fixed-length scan that stacks
+    per-iteration diagnostics; otherwise they run under a temperature-gated
+    bounded while loop.
+
+    Args:
+        single_iteration_fn: Callable
+            Map (state, iteration_idx) -> (next_state, temperature, diagnostics).
+        init_state: Any
+            Initial loop-carried state (direction-specific pytree).
+        init_temperature: float
+            Initial line-search temperature.
+        min_temperature: float
+            Early-stopping threshold on the temperature.
+        max_iterations: int
+            Maximum number of iterations (static int).
+        return_history: bool
+            Whether to scan a fixed number of iterations and stack diagnostics.
+
+    Returns:
+        final_state: Any
+            The final loop-carried state.
+        history: Any
+            Stacked per-iteration diagnostics if return_history else None.
+    """
+    if return_history:
+
+        def scan_step(state, iteration_idx):
+            next_state, _temperature, diagnostics = single_iteration_fn(state, iteration_idx)
+            return next_state, diagnostics
+
+        final_state, history = jax.lax.scan(scan_step, init_state, xs=jnp.arange(max_iterations))
+        return final_state, history
+
+    def iteration_body(carry):
+        current_state, iteration_count, _ = carry
+        next_state, next_temperature, _ = single_iteration_fn(current_state, iteration_count)
+        return next_state, iteration_count + 1, next_temperature
+
+    def iteration_condition(carry):
+        _, iteration_count, next_temperature = carry
+        return jnp.logical_and(iteration_count < max_iterations, next_temperature > min_temperature)
+
+    final_state, _, _ = bounded_while_loop(
+        cond_fun=iteration_condition,
+        body_fun=iteration_body,
+        init_val=(init_state, 0, init_temperature),
+        maxiter=max_iterations,
+    )
+    return final_state, None
+
+
 class ParamStruct(NamedTuple):
     val: float
     min: float

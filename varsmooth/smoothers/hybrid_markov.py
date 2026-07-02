@@ -14,6 +14,7 @@ from varsmooth.smoothers.forward_markov import std_forward_message
 from varsmooth.smoothers.reverse_markov import dual_objective
 from varsmooth.smoothers.reverse_markov import log_forward_message
 from varsmooth.smoothers.reverse_markov import std_backward_message
+from varsmooth.smoothers.utils import _run_iterations
 from varsmooth.smoothers.utils import kl_between_forward_gauss_markovs
 from varsmooth.smoothers.utils import kl_between_reverse_gauss_markovs
 from varsmooth.smoothers.utils import line_search
@@ -21,7 +22,6 @@ from varsmooth.smoothers.utils import log_to_std_form
 from varsmooth.smoothers.utils import merge_messages
 from varsmooth.smoothers.utils import statistical_expansion
 from varsmooth.smoothers.utils import std_to_log_form
-from varsmooth.utils import bounded_while_loop
 from varsmooth.utils import none_or_concat
 from varsmooth.utils import none_or_shift
 
@@ -397,36 +397,15 @@ def iterated_hybrid_markov_smoother(
     init_marginals = std_forward_message(init_forward_posterior)
     init_state = (init_marginals, init_forward_posterior, init_reverse_posterior)
 
-    if return_history:
-
-        def scan_step(state, iteration_idx):
-            next_state, _temperature, diagnostics = single_iteration(state, iteration_idx)
-            return next_state, diagnostics
-
-        final_state, history = jax.lax.scan(scan_step, init_state, xs=jnp.arange(max_iterations))
-        optimal_marginals, _, _ = final_state
-        return optimal_marginals, history
-
-    def iteration_body(carry):
-        """Body function for the while loop."""
-        current_state, iteration_count, _ = carry
-        next_state, next_temperature, _ = single_iteration(current_state, iteration_count)
-        return next_state, iteration_count + 1, next_temperature
-
-    def iteration_condition(carry):
-        """Condition function for the while loop."""
-        _, iteration_count, next_temperature = carry
-        # Continue if: not reached max iterations AND temperature is above minimum
-        return jnp.logical_and(iteration_count < max_iterations, next_temperature > min_temperature)
-
-    # Run the iterative optimization
-    final_state, _, _ = bounded_while_loop(
-        cond_fun=iteration_condition,
-        body_fun=iteration_body,
-        init_val=(init_state, 0, init_temperature),
-        maxiter=max_iterations,
+    final_state, history = _run_iterations(
+        single_iteration,
+        init_state,
+        init_temperature,
+        min_temperature,
+        max_iterations,
+        return_history,
     )
-
-    # Extract final marginals
     optimal_marginals, _, _ = final_state
+    if return_history:
+        return optimal_marginals, history
     return optimal_marginals

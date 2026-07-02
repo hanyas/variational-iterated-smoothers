@@ -3,10 +3,10 @@ from functools import partial
 import jax
 from jax import numpy as jnp
 
+from varsmooth.smoothers.utils import _run_iterations
 from varsmooth.smoothers.utils import free_energy
 from varsmooth.smoothers.utils import line_search
 from varsmooth.smoothers.utils import statistical_expansion
-from varsmooth.utils import bounded_while_loop
 
 
 def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
@@ -288,34 +288,17 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
             }
             return posterior, temperature, diagnostics
 
-        if return_history:
-
-            def scan_step(reference, iteration_idx):
-                next_posterior, _temperature, diagnostics = single_iteration(reference, iteration_idx)
-                return next_posterior, diagnostics
-
-            final_posterior, history = jax.lax.scan(scan_step, init_posterior, xs=jnp.arange(max_iterations))
-            return final_posterior, history
-
-        def iteration_body(carry):
-            current_posterior, iteration_count, _ = carry
-            next_posterior, next_temperature, _ = single_iteration(current_posterior, iteration_count)
-            return next_posterior, iteration_count + 1, next_temperature
-
-        def iteration_condition(carry):
-            _, iteration_count, next_temperature = carry
-            return jnp.logical_and(
-                iteration_count < max_iterations,
-                next_temperature > min_temperature,
-            )
-
-        optimal_posterior, _, _ = bounded_while_loop(
-            cond_fun=iteration_condition,
-            body_fun=iteration_body,
-            init_val=(init_posterior, 0, init_temperature),
-            maxiter=max_iterations,
+        final_posterior, history = _run_iterations(
+            single_iteration,
+            init_posterior,
+            init_temperature,
+            min_temperature,
+            max_iterations,
+            return_history,
         )
-        return optimal_posterior
+        if return_history:
+            return final_posterior, history
+        return final_posterior
 
     return (
         single_pass_smoother,
