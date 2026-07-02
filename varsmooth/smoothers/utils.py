@@ -360,7 +360,9 @@ def get_conditional(marginal: Gaussian, pairwise: Gaussian):
     C = pairwise.cov[:dim, dim:]
 
     return AffineGaussian(
-        F=jsc.linalg.solve(A, C).T, d=b - C.T @ jsc.linalg.solve(A, a), Sigma=B - C.T @ jsc.linalg.solve(A, C)
+        F=jsc.linalg.solve(A, C).T,
+        d=b - C.T @ jsc.linalg.solve(A, a),
+        Sigma=B - C.T @ jsc.linalg.solve(A, C),
     )
 
 
@@ -577,9 +579,9 @@ def line_search(
             Whether a feasible temperature was accepted.
     """
 
-    init_paramstruct = ParamStruct(val=init_param, min=min_param, max=max_param)
+    init_param_struct = ParamStruct(val=init_param, min=min_param, max=max_param)
     state = LineSearchState(
-        param=init_paramstruct,
+        param=init_param_struct,
         fn_val=jnp.inf,
         slack=jnp.inf,
         feasible=False,
@@ -599,7 +601,12 @@ def line_search(
             None,
         )
 
-        param = jax.lax.cond(pred=slack > 0.0, true_fun=reduce_param, false_fun=increase_param, operand=param)
+        param = jax.lax.cond(
+            pred=slack > 0.0,
+            true_fun=reduce_param,
+            false_fun=increase_param,
+            operand=param,
+        )
         return param, state
 
     def _iteration(carry):
@@ -621,7 +628,7 @@ def line_search(
     _, state = bounded_while_loop(
         cond_fun=lambda x: jnp.abs(x[-1].slack) > rtol,
         body_fun=_iteration,
-        init_val=(init_paramstruct, state),
+        init_val=(init_param_struct, state),
         maxiter=max_iter,
     )
     return state.param.val, state.fn_val, state.slack, state.feasible
@@ -637,7 +644,11 @@ def increase_param(param) -> ParamStruct:
     return ParamStruct(val=jnp.sqrt(param.val * param.max), min=param.val, max=param.max)
 
 
-def sample_from_forward_markov(rng_key: Array, gauss_markov: GaussMarkov, num_samples: int) -> Array:
+def sample_from_forward_markov(
+    rng_key: Array,
+    gauss_markov: GaussMarkov,
+    num_samples: int,
+) -> Array:
     """Sample trajectories from forward Markov smoother conditional posteriors.
 
     The forward Markov smoother result contains conditional posteriors p(x_t | x_{t-1})
