@@ -12,7 +12,56 @@ Install [JAX](https://github.com/jax-ml/jax?tab=readme-ov-file#installation) for
 $ pip install -e .
 ```
 
-for an editable install.
+for an editable install. The library core depends only on NumPy, SciPy, and JAX; the plotting used by `examples/` and `experiments/` is an optional extra:
+
+```bash
+$ pip install -e ".[examples]"
+```
+
+## Quickstart
+
+Run an iterated forward smoother on a small linear-Gaussian model and read off the posterior marginals:
+
+```python
+import jax
+import numpy as np
+
+from varsmooth.approximation import gauss_hermite_linearization as linearize
+from varsmooth.approximation.linearization import get_log_observation, get_log_prior, get_log_transition
+from varsmooth.objects import AdditiveGaussianModel, AffineGaussian, Gaussian, GaussMarkov
+from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
+from varsmooth.smoothers.utils import std_forward_message
+
+jax.config.update("jax_enable_x64", True)
+
+dim, num_steps = 2, 25
+A, H = 0.9 * np.eye(dim), np.eye(dim)
+prior = Gaussian(np.zeros(dim), np.eye(dim))
+transition = AdditiveGaussianModel(lambda x: A @ x, Gaussian(np.zeros(dim), 0.1 * np.eye(dim)))
+observation = AdditiveGaussianModel(lambda x: H @ x, Gaussian(np.zeros(dim), 0.1 * np.eye(dim)))
+observations = np.zeros((num_steps, dim))  # replace with your data
+
+# initial forward Gauss-Markov posterior: a root marginal plus num_steps kernels
+init = GaussMarkov(
+    marginal=prior,
+    kernels=AffineGaussian(
+        np.repeat([0.1 * np.eye(dim)], num_steps, axis=0),
+        np.zeros((num_steps, dim)),
+        np.repeat([np.eye(dim)], num_steps, axis=0),
+    ),
+)
+
+# expand the model into quadratic log-potentials via posterior linearization
+log_prior_fn = lambda q: get_log_prior(prior, q, linearize)
+log_transition_fn = lambda q, _: get_log_transition(transition, q, linearize)
+log_observation_fn = lambda y, q: get_log_observation(y, observation, q, linearize)
+
+posterior = iterated_forward_markov_smoother(
+    observations, log_prior_fn, log_transition_fn, log_observation_fn,
+    init, kl_constraint=1.0, verbose=False,
+)
+marginals = std_forward_message(posterior)  # Gaussian marginals over x_0 .. x_T
+```
 
 ## Smoothers
 

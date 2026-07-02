@@ -4,12 +4,20 @@ import pytest
 
 from tests.lgssm import simulate
 from tests.test_utils import generate_system
+from varsmooth.approximation import gauss_hermite_linearization as linearize
+from varsmooth.approximation import gauss_hermite_quadratization as quadratize
+from varsmooth.approximation.fourier_hermite import get_log_observation as fh_get_log_observation
+from varsmooth.approximation.fourier_hermite import get_log_prior as fh_get_log_prior
+from varsmooth.approximation.fourier_hermite import get_log_transition as fh_get_log_transition
+from varsmooth.approximation.linearization import get_log_observation as pl_get_log_observation
+from varsmooth.approximation.linearization import get_log_prior as pl_get_log_prior
+from varsmooth.approximation.linearization import get_log_transition as pl_get_log_transition
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
-from varsmooth.smoothers.rts_kalman import rts_smoother
 from varsmooth.smoothers.reverse_markov import reverse_markov_smoother
+from varsmooth.smoothers.rts_kalman import rts_smoother
 from varsmooth.smoothers.utils import std_backward_message
 
 
@@ -24,12 +32,7 @@ def config():
 @pytest.mark.parametrize("dim_x", [1, 2, 3])
 @pytest.mark.parametrize("dim_y", [1, 1, 2])
 @pytest.mark.parametrize("seed", [0, 13, 42])
-def test_pl_fwd_smoother(dim_x, dim_y, seed):
-
-    from varsmooth.approximation import gauss_hermite_linearization as linearize
-    from varsmooth.approximation.linearization import get_log_observation
-    from varsmooth.approximation.linearization import get_log_prior
-    from varsmooth.approximation.linearization import get_log_transition
+def test_pl_rev_smoother(dim_x, dim_y, seed):
 
     np.random.seed(seed)
 
@@ -70,9 +73,9 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
         ),
     )
 
-    log_prior_fn = lambda q: get_log_prior(prior_dist, q, linearize)
-    log_transition_fn = lambda q, _: get_log_transition(transition_model, q, linearize)
-    log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, linearize)
+    log_prior_fn = lambda q: pl_get_log_prior(prior_dist, q, linearize)
+    log_transition_fn = lambda q, _: pl_get_log_transition(transition_model, q, linearize)
+    log_observation_fn = lambda y, q: pl_get_log_observation(y, observation_model, q, linearize)
 
     reverse_markov = reverse_markov_smoother(
         ys, log_prior_fn, log_transition_fn, log_observation_fn, init_posterior, 0.0
@@ -86,12 +89,7 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
 @pytest.mark.parametrize("dim_x", [1, 2, 3])
 @pytest.mark.parametrize("dim_y", [1, 1, 2])
 @pytest.mark.parametrize("seed", [0, 13, 42])
-def test_fh_fwd_smoother(dim_x, dim_y, seed):
-
-    from varsmooth.approximation import gauss_hermite_quadratization as quadratize
-    from varsmooth.approximation.fourier_hermite import get_log_observation
-    from varsmooth.approximation.fourier_hermite import get_log_prior
-    from varsmooth.approximation.fourier_hermite import get_log_transition
+def test_fh_rev_smoother(dim_x, dim_y, seed):
 
     np.random.seed(seed)
 
@@ -132,9 +130,9 @@ def test_fh_fwd_smoother(dim_x, dim_y, seed):
         ),
     )
 
-    log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
-    log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
-    log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
+    log_prior_fn = lambda q: fh_get_log_prior(prior_dist, q, quadratize)
+    log_transition_fn = lambda q, p: fh_get_log_transition(transition_model, q, p, quadratize)
+    log_observation_fn = lambda y, q: fh_get_log_observation(y, observation_model, q, quadratize)
 
     reverse_markov = reverse_markov_smoother(
         ys, log_prior_fn, log_transition_fn, log_observation_fn, init_posterior, 0.0
