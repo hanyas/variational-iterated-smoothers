@@ -1,8 +1,8 @@
 from jax import Array
 
 from varsmooth.objects import GaussMarkov
-from varsmooth.objects import LogMarginalNorm
 from varsmooth.objects import LogMessage
+from varsmooth.objects import LogNormalizer
 from varsmooth.objects import LogObservation
 from varsmooth.objects import LogPrior
 from varsmooth.objects import LogTransition
@@ -19,7 +19,7 @@ def log_forward_message(
     log_observation: LogObservation,
     reverse_reference: GaussMarkov,
     damping: float,
-) -> tuple[GaussMarkov, LogMarginalNorm, ValueFn, LogMessage, Array]:
+) -> tuple[GaussMarkov, LogNormalizer, ValueFn, LogMessage, Array]:
     """Forward message pass of the reverse Gauss-Markov smoother.
 
     Eliminates the past state of every pairwise log-transition, accumulating a
@@ -42,7 +42,7 @@ def log_forward_message(
         posterior: GaussMarkov
             The updated reverse Gauss-Markov posterior (leaf marginal + backward
             kernels).
-        log_marg_norm: LogMarginalNorm
+        log_marg_norm: LogNormalizer
             The quadratic marginal log-normalizer at the leaf.
         value_fns: ValueFn
             The per-marginal forward value functions of leading shape (T + 1,).

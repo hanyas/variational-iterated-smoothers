@@ -24,7 +24,7 @@ with the paper's symbols mapped onto the NamedTuple fields as follows:
     LogObservation    L    l    nu      log observation likelihood
     ValueFn           R    r    rho     backward/forward value function
     LogMessage        S    s    xi      eliminated-variable message
-    LogMarginalNorm   U    u    eta     marginal log-normalizer
+    LogNormalizer     U    u    eta     marginal log-normalizer
 
 LogTransition is the two-variable analogue over z = (x_{k+1}, x_k): it stores
 -0.5 z^T C z + [c1, c2]^T z + kappa with the block structure
@@ -201,7 +201,7 @@ class LogMessage(NamedTuple):
         return quad_predict(self.S, self.s, self.xi, x)
 
 
-class LogMarginalNorm(NamedTuple):
+class LogNormalizer(NamedTuple):
     """Quadratic marginal log-normalizer with fields (U, u, eta).
 
     Attributes:

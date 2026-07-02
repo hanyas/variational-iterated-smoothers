@@ -9,8 +9,8 @@ from jax import scipy as jsc
 from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
-from varsmooth.objects import LogMarginalNorm
 from varsmooth.objects import LogMessage
+from varsmooth.objects import LogNormalizer
 from varsmooth.objects import LogObservation
 from varsmooth.objects import LogPrior
 from varsmooth.objects import LogTransition
@@ -102,7 +102,7 @@ def _log_message_pass(
     reference: GaussMarkov,
     damping: float,
     reverse: bool,
-) -> tuple[GaussMarkov, LogMarginalNorm, ValueFn, LogMessage, Array]:
+) -> tuple[GaussMarkov, LogNormalizer, ValueFn, LogMessage, Array]:
     """Shared quadratic message pass for the forward and reverse smoothers.
 
     Both directions eliminate one block of every pairwise log-transition and
@@ -132,7 +132,7 @@ def _log_message_pass(
     Returns:
         posterior: GaussMarkov
             The updated Gauss-Markov posterior (boundary marginal + kernels).
-        log_marg_norm: LogMarginalNorm
+        log_marg_norm: LogNormalizer
             The quadratic marginal log-normalizer at the boundary.
         value_fns: ValueFn
             The per-marginal value functions of leading shape (T + 1,).
@@ -266,7 +266,7 @@ def _log_message_pass(
         U = Joo - Jeo.T @ iJee_Jeo
         u = jo - Jeo.T @ iJee_je
         eta = tau + 0.5 * (dim * jnp.log(2 * jnp.pi) - logdet_Jee) + 0.5 * je.T @ iJee_je
-        return Gaussian(post_m, post_P), LogMarginalNorm(U, u, eta)
+        return Gaussian(post_m, post_P), LogNormalizer(U, u, eta)
 
     def _not_feasible_marginal():
         post_m = jnp.zeros_like(nominal_marginal.mean)
@@ -275,7 +275,7 @@ def _log_message_pass(
         U = jnp.zeros_like(Joo)
         u = jnp.zeros_like(jo)
         eta = jnp.zeros_like(tau)
-        return Gaussian(post_m, post_P), LogMarginalNorm(U, u, eta)
+        return Gaussian(post_m, post_P), LogNormalizer(U, u, eta)
 
     marginal, log_marg_norm = jax.lax.cond(
         pred=jnp.all(feasible_flags),
