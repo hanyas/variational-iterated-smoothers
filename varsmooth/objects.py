@@ -11,8 +11,9 @@ Gauss-Markov kernels and explained by T observations y_1, ..., y_T. Batched
 (scanned) quantities carry a leading axis of size T or T + 1 accordingly.
 Other modules refer back to these conventions instead of re-stating them.
 
-Quadratic log-potentials follow the notation of the paper "Proximal
-Approximate Inference in State-Space Models" (arXiv:2511.15409). Every
+Quadratic log-potentials follow the notation of the paper "Recursive
+Entropic Variational Inference for Nonlinear State-Space Models"
+(arXiv:2511.15409). Every
 single-variable potential below stores the log-quadratic form
 
     -0.5 x^T M x + v^T x + c

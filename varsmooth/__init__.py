@@ -1,7 +1,8 @@
 """varsmooth: variational iterated Gaussian smoothing in state-space models.
 
-Implements the proximal / entropic trust-region smoothers of "Proximal
-Approximate Inference in State-Space Models" (arXiv:2511.15409): iterated
+Implements the proximal / entropic trust-region smoothers of "Recursive
+Entropic Variational Inference for Nonlinear State-Space Models"
+(arXiv:2511.15409): iterated
 KL-constrained updates over a Gauss-Markov posterior, with the model expanded
 through generalized statistical linear regression or Fourier-Hermite moment
 matching. See varsmooth/objects.py for the shape and notation conventions.

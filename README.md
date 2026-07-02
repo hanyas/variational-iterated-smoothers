@@ -1,6 +1,6 @@
-# Recursive Entropic Variational Smoothing
+# Recursive Entropic Variational Inference
 
-Implements the approximate inference algorithms from the paper [Proximal Approximate Inference in State-Space Models](https://arxiv.org/abs/2511.15409).
+Implements the approximate inference algorithms from the paper [Recursive Entropic Variational Inference for Nonlinear State-Space Models](https://arxiv.org/abs/2511.15409).
 
 `varsmooth` performs iterated Gaussian smoothing in nonlinear, non-Gaussian state-space models. Inference is cast as a sequence of entropic trust-region (KL-constrained) updates over a Gauss–Markov posterior, with the model expanded through generalized statistical linear regression or Fourier–Hermite moment matching. See the scripts in `examples/` for demonstrations.
 
@@ -96,8 +96,8 @@ python examples/bearing_only/pl_reverse.py
 If you find this code useful, please cite the paper
 
 ```bib
-@article{abdulsamad2025proximal,
-  title = {Proximal Approximate Inference in State-Space Models},
+@article{abdulsamad2025recursive,
+  title = {Recursive Entropic Variational Inference for Nonlinear State-Space Models},
   author = {Hany Abdulsamad and {\'A}ngel F. Garc{\'i}a-Fern{\'a}ndez and Simo S{\"a}rkk{\"a}},
   journal = {arXiv preprint arXiv:2511.15409},
   year = {2025},
