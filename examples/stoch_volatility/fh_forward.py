@@ -25,13 +25,13 @@ mu = -0.5  # long-run mean log-volatility
 phi = 0.98  # autoregressive persistence
 sigma = 0.16  # transition noise std
 
-nb_steps = 1024  # number of observations
+num_steps = 1024  # number of observations
 dim_x, dim_y = 1, 1
 
 p0 = sigma**2 / (1.0 - phi**2)  # prior variance
 rng = np.random.RandomState(23)
 x0 = mu + np.sqrt(p0) * rng.randn()
-_, true_states, observations = get_data(x0, mu, phi, sigma, nb_steps, random_state=rng)
+_, true_states, observations = get_data(x0, mu, phi, sigma, num_steps, random_state=rng)
 transition_cov, observation_cov, transition_fn, observation_fn, _, _ = make_parameters(mu, phi, sigma)
 
 transition_model = AdditiveGaussianModel(
@@ -54,9 +54,9 @@ Sigma = 1.0 * np.eye(dim_x)
 init_posterior = GaussMarkov(
     marginal=prior_dist,
     kernels=AffineGaussian(
-        F=np.repeat([F], nb_steps, axis=0),
-        d=np.repeat([d], nb_steps, axis=0),
-        Sigma=np.repeat([Sigma], nb_steps, axis=0),
+        F=np.repeat([F], num_steps, axis=0),
+        d=np.repeat([d], num_steps, axis=0),
+        Sigma=np.repeat([Sigma], num_steps, axis=0),
     ),
 )
 
@@ -75,7 +75,7 @@ forward_markov = iterated_forward_markov_smoother(
 )
 marginals = std_forward_message(forward_markov)
 
-ts = np.arange(nb_steps + 1)
+ts = np.arange(num_steps + 1)
 mean = np.asarray(marginals.mean)[:, 0]
 std = np.sqrt(np.asarray(marginals.cov)[:, 0, 0])
 

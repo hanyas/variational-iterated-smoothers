@@ -43,7 +43,7 @@ def main():
             model_fns=fns,
             observations=ys,
             system=system,
-            nb_steps=num_steps,
+            num_steps=num_steps,
             temperature=temperature,
             init_kwargs=init_post_kwargs,
         )

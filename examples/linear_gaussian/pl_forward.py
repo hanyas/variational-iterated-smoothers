@@ -24,7 +24,7 @@ jax.config.update("jax_platform_name", "cpu")
 np.random.seed(0)
 
 dim_x, dim_y = 3, 2
-nb_steps = 100
+num_steps = 100
 
 mu0, P0, A, b, Omega, H, e, Delta = make_random_system(dim_x, dim_y, random_state=0)
 prior_dist = Gaussian(mu0, P0)
@@ -39,17 +39,17 @@ observation_model = AdditiveGaussianModel(
 )
 
 _transition_model = AffineGaussian(
-    np.repeat([A], nb_steps, axis=0),
-    np.repeat([b], nb_steps, axis=0),
-    np.repeat([Omega], nb_steps, axis=0),
+    np.repeat([A], num_steps, axis=0),
+    np.repeat([b], num_steps, axis=0),
+    np.repeat([Omega], num_steps, axis=0),
 )
 _observation_model = AffineGaussian(
-    np.repeat([H], nb_steps, axis=0),
-    np.repeat([e], nb_steps, axis=0),
-    np.repeat([Delta], nb_steps, axis=0),
+    np.repeat([H], num_steps, axis=0),
+    np.repeat([e], num_steps, axis=0),
+    np.repeat([Delta], num_steps, axis=0),
 )
 
-_, xs, ys = get_data(mu0, A, b, Omega, H, e, Delta, nb_steps, random_state=13)
+_, xs, ys = get_data(mu0, A, b, Omega, H, e, Delta, num_steps, random_state=13)
 rts_marginals = rts_smoother(
     observations=ys,
     prior_dist=prior_dist,
@@ -64,9 +64,9 @@ Sigma = 1.0 * np.eye(dim_x)
 init_posterior = GaussMarkov(
     marginal=Gaussian(mean=np.random.randn(prior_dist.mean.shape[0]), cov=np.eye(prior_dist.mean.shape[0])),
     kernels=AffineGaussian(
-        F=np.repeat([F], nb_steps, axis=0),
-        d=np.repeat([d], nb_steps, axis=0),
-        Sigma=np.repeat([Sigma], nb_steps, axis=0),
+        F=np.repeat([F], num_steps, axis=0),
+        d=np.repeat([d], num_steps, axis=0),
+        Sigma=np.repeat([Sigma], num_steps, axis=0),
     ),
 )
 

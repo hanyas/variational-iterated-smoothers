@@ -44,11 +44,11 @@ def make_sv_system(mu=-0.5, phi=0.98, sigma=0.16):
     return SVSystem(mu, phi, sigma, prior)
 
 
-def simulate_data(system, nb_steps, rng):
+def simulate_data(system, num_steps, rng):
     mu, phi, sigma = system.mu, system.phi, system.sigma
     p0 = float(system.prior.cov[0, 0])
     x0 = mu + np.sqrt(p0) * rng.randn()
-    _, true_states, observations = sv_env.get_data(x0, mu, phi, sigma, nb_steps, rng)
+    _, true_states, observations = sv_env.get_data(x0, mu, phi, sigma, num_steps, rng)
     return jnp.asarray(true_states), jnp.asarray(observations)
 
 

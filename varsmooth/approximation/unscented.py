@@ -34,24 +34,24 @@ def linearize(
 
 
 def get_sigma_points(m: Array, chol_P: Array, alpha: float, beta: float, kappa: float | None) -> SigmaPoints:
-    nb_dim = m.shape[0]
+    num_dim = m.shape[0]
     if kappa is None:
-        kappa = 3.0 + nb_dim
+        kappa = 3.0 + num_dim
 
-    wm, wc, xi = _unscented_weights(nb_dim, alpha, beta, kappa)
+    wm, wc, xi = _unscented_weights(num_dim, alpha, beta, kappa)
     sigma_points = m[None, :] + jnp.dot(chol_P, xi).T
     return SigmaPoints(sigma_points, wm, wc, xi)
 
 
-def _unscented_weights(nb_dim: int, alpha: float, beta: float, kappa: float | None) -> tuple[Array, Array, Array]:
-    lamda = alpha**2 * (nb_dim + kappa) - nb_dim
-    wm = jnp.full(2 * nb_dim + 1, 1 / (2 * (nb_dim + lamda)))
+def _unscented_weights(num_dim: int, alpha: float, beta: float, kappa: float | None) -> tuple[Array, Array, Array]:
+    lamda = alpha**2 * (num_dim + kappa) - num_dim
+    wm = jnp.full(2 * num_dim + 1, 1 / (2 * (num_dim + lamda)))
 
-    wm = wm.at[0].set(lamda / (nb_dim + lamda))
-    wc = wm.at[0].set(lamda / (nb_dim + lamda) + (1 - alpha**2 + beta))
+    wm = wm.at[0].set(lamda / (num_dim + lamda))
+    wc = wm.at[0].set(lamda / (num_dim + lamda) + (1 - alpha**2 + beta))
 
-    zeros = jnp.zeros((1, nb_dim))
-    I_dim = jnp.eye(nb_dim)
+    zeros = jnp.zeros((1, num_dim))
+    I_dim = jnp.eye(num_dim)
 
-    xi = jnp.sqrt(nb_dim + lamda) * jnp.concatenate([zeros, I_dim, -I_dim], axis=0)
+    xi = jnp.sqrt(num_dim + lamda) * jnp.concatenate([zeros, I_dim, -I_dim], axis=0)
     return wm, wc, xi.T

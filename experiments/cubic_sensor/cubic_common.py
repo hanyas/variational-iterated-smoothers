@@ -53,10 +53,10 @@ def make_cubic_system(phi0=0.95, mu0=0.4, Sigma0=0.36, beta=1.0, r=1.0):
     return CubicSystem(phi0, mu0, Sigma0, beta, r, prior)
 
 
-def simulate_data(system, nb_steps, rng):
+def simulate_data(system, num_steps, rng):
     x0 = system.mu0 + np.sqrt(system.Sigma0) * rng.randn()
     _, true_states, observations = get_data(
-        x0, system.phi0, system.mu0, system.Sigma0, system.beta, system.r, nb_steps, rng
+        x0, system.phi0, system.mu0, system.Sigma0, system.beta, system.r, num_steps, rng
     )
     return jnp.asarray(true_states), jnp.asarray(observations)
 
@@ -85,7 +85,7 @@ def make_model_fns(system, family, backend):
     return lp, lt, lo
 
 
-def make_prior_chain_init(system, nb_steps):
+def make_prior_chain_init(system, num_steps):
     Q = (1.0 - system.phi0**2) * system.Sigma0
     F = system.phi0 * np.eye(DIM_X)
     d = np.array([(1.0 - system.phi0) * system.mu0])
@@ -94,9 +94,9 @@ def make_prior_chain_init(system, nb_steps):
     return GaussMarkov(
         marginal=system.prior,
         kernels=AffineGaussian(
-            F=np.repeat([F], nb_steps, axis=0),
-            d=np.repeat([d], nb_steps, axis=0),
-            Sigma=np.repeat([Sigma], nb_steps, axis=0),
+            F=np.repeat([F], num_steps, axis=0),
+            d=np.repeat([d], num_steps, axis=0),
+            Sigma=np.repeat([Sigma], num_steps, axis=0),
         ),
     )
 

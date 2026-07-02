@@ -29,10 +29,10 @@ dt = 0.01  # discretization time step
 qc = 0.01  # discretization noise
 qw = 0.1  # discretization noise
 
-nb_steps = 100  # number of observations
+num_steps = 100  # number of observations
 dim_x, dim_y = 5, 2
 
-_, true_states, observations = get_data(x0, dt, r, nb_steps, s1, s2, random_state=1)
+_, true_states, observations = get_data(x0, dt, r, num_steps, s1, s2, random_state=1)
 transition_cov, observation_cov, transition_fn, observation_fn, _, _ = make_parameters(qc, qw, r, dt, s1, s2)
 
 transition_model = AdditiveGaussianModel(
@@ -55,9 +55,9 @@ Sigma = 1.0 * np.eye(dim_x)
 init_posterior = GaussMarkov(
     marginal=prior_dist,
     kernels=AffineGaussian(
-        F=np.repeat([F], nb_steps, axis=0),
-        d=np.repeat([d], nb_steps, axis=0),
-        Sigma=np.repeat([Sigma], nb_steps, axis=0),
+        F=np.repeat([F], num_steps, axis=0),
+        d=np.repeat([d], num_steps, axis=0),
+        Sigma=np.repeat([Sigma], num_steps, axis=0),
     ),
 )
 

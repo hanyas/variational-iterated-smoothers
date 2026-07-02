@@ -26,12 +26,12 @@ sigma0 = 0.36  # stationary (prior) variance
 beta = 1.0  # observation gain
 r = 1.0  # observation noise (stddev)
 
-nb_steps = 4096  # number of observations
+num_steps = 4096  # number of observations
 dim_x, dim_y = 1, 1
 
 rng = np.random.RandomState(23)
 x0 = mu0 + np.sqrt(sigma0) * rng.randn()
-_, true_states, observations = get_data(x0, phi0, mu0, sigma0, beta, r, nb_steps, random_state=rng)
+_, true_states, observations = get_data(x0, phi0, mu0, sigma0, beta, r, num_steps, random_state=rng)
 transition_cov, observation_cov, transition_fn, observation_fn, _, _ = make_parameters(phi0, mu0, sigma0, beta, r)
 
 transition_model = AdditiveGaussianModel(
@@ -54,9 +54,9 @@ Sigma = 1.0 * np.eye(dim_x)
 init_fwd_posterior = GaussMarkov(
     marginal=prior_dist,
     kernels=AffineGaussian(
-        F=np.repeat([F], nb_steps, axis=0),
-        d=np.repeat([d], nb_steps, axis=0),
-        Sigma=np.repeat([Sigma], nb_steps, axis=0),
+        F=np.repeat([F], num_steps, axis=0),
+        d=np.repeat([d], num_steps, axis=0),
+        Sigma=np.repeat([Sigma], num_steps, axis=0),
     ),
 )
 init_rvs_posterior = initialize_reverse_with_forward(init_fwd_posterior)
@@ -76,7 +76,7 @@ marginals = iterated_hybrid_markov_smoother(
     init_temperature=1e12,
 )
 
-ts = np.arange(nb_steps + 1)
+ts = np.arange(num_steps + 1)
 mean = np.asarray(marginals.mean)[:, 0]
 std = np.sqrt(np.asarray(marginals.cov)[:, 0, 0])
 

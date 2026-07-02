@@ -36,8 +36,8 @@ def linearize(
 @partial(jax.jit, static_argnums=(2,))
 def get_sigma_points(m: Array, chol_P: Array, order: int) -> SigmaPoints:
     """Return the order-point Gauss-Hermite sigma points for N(m, chol_P chol_P^T)."""
-    nb_dim = m.shape[0]
-    wm, wc, xi = _gauss_hermite_weights(nb_dim, order)
+    num_dim = m.shape[0]
+    wm, wc, xi = _gauss_hermite_weights(num_dim, order)
     sigma_points = m[None, :] + (chol_P @ xi).T
     return SigmaPoints(sigma_points, wm, wc, xi)
 
@@ -66,12 +66,12 @@ def mvhermgauss(H: int, D: int):
     return x, w
 
 
-def _gauss_hermite_weights(nb_dim, order):
+def _gauss_hermite_weights(num_dim, order):
     """
     Return weights and sigma-points for Gauss-Hermite cubature
     """
     # sigma_pts, weights = hermgauss(order)  # Gauss-Hermite sigma points and weights
-    sigma_pts, weights = mvhermgauss(order, nb_dim)
+    sigma_pts, weights = mvhermgauss(order, num_dim)
     sigma_pts = jnp.sqrt(2) * sigma_pts.T
-    weights = weights.T * jnp.pi ** (-0.5 * nb_dim)  # scale weights by 1/√π
+    weights = weights.T * jnp.pi ** (-0.5 * num_dim)  # scale weights by 1/√π
     return weights, weights, sigma_pts

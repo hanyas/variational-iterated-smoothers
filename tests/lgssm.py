@@ -19,7 +19,7 @@ def simulate(
     H: Array,
     e: Array,
     Delta: Array,
-    nb_steps: int,
+    num_steps: int,
     random_state=None,
 ):
     if random_state is None or isinstance(random_state, int):
@@ -28,14 +28,14 @@ def simulate(
     dim_x = Omega.shape[0]
     dim_y = Delta.shape[0]
 
-    normals = random_state.randn(nb_steps, dim_x + dim_y).astype(np.float32)
+    normals = random_state.randn(num_steps, dim_x + dim_y).astype(np.float32)
 
     x = np.copy(x0).astype(np.float32)
-    observations = np.empty((nb_steps, dim_y), dtype=np.float32)
-    true_states = np.empty((nb_steps + 1, dim_x), dtype=np.float32)
+    observations = np.empty((num_steps, dim_y), dtype=np.float32)
+    true_states = np.empty((num_steps + 1, dim_x), dtype=np.float32)
     true_states[0] = x
 
-    for i in range(nb_steps):
+    for i in range(num_steps):
         x = A @ x + np.linalg.cholesky(Omega) @ normals[i, :dim_x] + b
         true_states[i + 1] = x
         y = H @ x + np.linalg.cholesky(Delta) @ normals[i, dim_x:] + e

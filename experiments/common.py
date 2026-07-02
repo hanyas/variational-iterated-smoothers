@@ -137,7 +137,7 @@ def nlpd(marginals, x_true):
 # ---- smoother runners -------------------------------------------------------
 
 
-def make_forward_init(system, nb_steps, F_scale=0.1, Sigma_scale=1.0, prior=None):
+def make_forward_init(system, num_steps, F_scale=0.1, Sigma_scale=1.0, prior=None):
     """Forward Gauss-Markov init: root = prior, kernels = (F_scale*I, 0, Sigma_scale*I)."""
     dim_x = jnp.asarray(system.prior.mean).shape[0]
     F = F_scale * np.eye(dim_x)
@@ -146,16 +146,16 @@ def make_forward_init(system, nb_steps, F_scale=0.1, Sigma_scale=1.0, prior=None
     return GaussMarkov(
         marginal=system.prior if prior is None else prior,
         kernels=AffineGaussian(
-            np.repeat([F], nb_steps, axis=0),
-            np.repeat([d], nb_steps, axis=0),
-            np.repeat([Sigma], nb_steps, axis=0),
+            np.repeat([F], num_steps, axis=0),
+            np.repeat([d], num_steps, axis=0),
+            np.repeat([Sigma], num_steps, axis=0),
         ),
     )
 
 
-def make_reverse_init(system, nb_steps, **kwargs):
+def make_reverse_init(system, num_steps, **kwargs):
     """Reverse Gauss-Markov init derived from the forward init."""
-    return initialize_reverse_with_forward(make_forward_init(system, nb_steps, **kwargs))
+    return initialize_reverse_with_forward(make_forward_init(system, num_steps, **kwargs))
 
 
 def get_marginals(direction, result):

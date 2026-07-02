@@ -33,7 +33,7 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
 
     np.random.seed(seed)
 
-    nb_steps = 100
+    num_steps = 100
 
     prior_dist, A, b, Omega, _ = generate_system(dim_x, dim_x)
     transition_model = AdditiveGaussianModel(lambda x: A @ x + b, Gaussian(np.zeros((dim_x,)), Omega))
@@ -41,19 +41,19 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
     _, H, e, Delta, _ = generate_system(dim_x, dim_y)
     observation_model = AdditiveGaussianModel(lambda x: H @ x + e, Gaussian(np.zeros((dim_y,)), Delta))
 
-    xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps)
+    xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, num_steps)
     rts_marginals = rts_smoother(
         observations=ys,
         prior_dist=prior_dist,
         linear_transition=AffineGaussian(
-            np.repeat([A], nb_steps, axis=0),
-            np.repeat([b], nb_steps, axis=0),
-            np.repeat([Omega], nb_steps, axis=0),
+            np.repeat([A], num_steps, axis=0),
+            np.repeat([b], num_steps, axis=0),
+            np.repeat([Omega], num_steps, axis=0),
         ),
         linear_observation=AffineGaussian(
-            np.repeat([H], nb_steps, axis=0),
-            np.repeat([e], nb_steps, axis=0),
-            np.repeat([Delta], nb_steps, axis=0),
+            np.repeat([H], num_steps, axis=0),
+            np.repeat([e], num_steps, axis=0),
+            np.repeat([Delta], num_steps, axis=0),
         ),
     )
 
@@ -64,9 +64,9 @@ def test_pl_fwd_smoother(dim_x, dim_y, seed):
     init_posterior = GaussMarkov(
         marginal=prior_dist,
         kernels=AffineGaussian(
-            np.repeat([F], nb_steps, axis=0),
-            np.repeat([d], nb_steps, axis=0),
-            np.repeat([Sigma], nb_steps, axis=0),
+            np.repeat([F], num_steps, axis=0),
+            np.repeat([d], num_steps, axis=0),
+            np.repeat([Sigma], num_steps, axis=0),
         ),
     )
 
@@ -95,7 +95,7 @@ def test_fh_fwd_smoother(dim_x, dim_y, seed):
 
     np.random.seed(seed)
 
-    nb_steps = 100
+    num_steps = 100
 
     prior_dist, A, b, Omega, _ = generate_system(dim_x, dim_x)
     transition_model = AdditiveGaussianModel(lambda x: A @ x + b, Gaussian(np.zeros((dim_x,)), Omega))
@@ -103,19 +103,19 @@ def test_fh_fwd_smoother(dim_x, dim_y, seed):
     _, H, e, Delta, _ = generate_system(dim_x, dim_y)
     observation_model = AdditiveGaussianModel(lambda x: H @ x + e, Gaussian(np.zeros((dim_y,)), Delta))
 
-    xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, nb_steps)
+    xs, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, num_steps)
     rts_marginals = rts_smoother(
         observations=ys,
         prior_dist=prior_dist,
         linear_transition=AffineGaussian(
-            np.repeat([A], nb_steps, axis=0),
-            np.repeat([b], nb_steps, axis=0),
-            np.repeat([Omega], nb_steps, axis=0),
+            np.repeat([A], num_steps, axis=0),
+            np.repeat([b], num_steps, axis=0),
+            np.repeat([Omega], num_steps, axis=0),
         ),
         linear_observation=AffineGaussian(
-            np.repeat([H], nb_steps, axis=0),
-            np.repeat([e], nb_steps, axis=0),
-            np.repeat([Delta], nb_steps, axis=0),
+            np.repeat([H], num_steps, axis=0),
+            np.repeat([e], num_steps, axis=0),
+            np.repeat([Delta], num_steps, axis=0),
         ),
     )
 
@@ -126,9 +126,9 @@ def test_fh_fwd_smoother(dim_x, dim_y, seed):
     init_posterior = GaussMarkov(
         marginal=prior_dist,
         kernels=AffineGaussian(
-            np.repeat([F], nb_steps, axis=0),
-            np.repeat([d], nb_steps, axis=0),
-            np.repeat([Sigma], nb_steps, axis=0),
+            np.repeat([F], num_steps, axis=0),
+            np.repeat([d], num_steps, axis=0),
+            np.repeat([Sigma], num_steps, axis=0),
         ),
     )
 

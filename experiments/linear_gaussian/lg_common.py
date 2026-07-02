@@ -70,29 +70,29 @@ def make_linear_system(rho=0.985, theta=0.16, q=0.05, r=0.25, r0=4.0):
     return LGSystem(prior, A, b, Omega, H, e, Delta)
 
 
-def simulate_data(system, nb_steps, rng):
+def simulate_data(system, num_steps, rng):
     mu0 = np.asarray(system.prior.mean)
     P0 = np.asarray(system.prior.cov)
     x0 = mu0 + np.linalg.cholesky(P0) @ rng.randn(mu0.shape[0])
     _, true_states, observations = lg_env.get_data(
-        x0, system.A, system.b, system.Omega, system.H, system.e, system.Delta, nb_steps, rng
+        x0, system.A, system.b, system.Omega, system.H, system.e, system.Delta, num_steps, rng
     )
     return jnp.asarray(true_states), jnp.asarray(observations)
 
 
 # ---- exact oracles ----------------------------------------------------------
 def rts_marginals(system, observations):
-    nb_steps = observations.shape[0]
+    num_steps = observations.shape[0]
 
     linear_transition = AffineGaussian(
-        np.repeat([system.A], nb_steps, axis=0),
-        np.repeat([system.b], nb_steps, axis=0),
-        np.repeat([system.Omega], nb_steps, axis=0),
+        np.repeat([system.A], num_steps, axis=0),
+        np.repeat([system.b], num_steps, axis=0),
+        np.repeat([system.Omega], num_steps, axis=0),
     )
     linear_observation = AffineGaussian(
-        np.repeat([system.H], nb_steps, axis=0),
-        np.repeat([system.e], nb_steps, axis=0),
-        np.repeat([system.Delta], nb_steps, axis=0),
+        np.repeat([system.H], num_steps, axis=0),
+        np.repeat([system.e], num_steps, axis=0),
+        np.repeat([system.Delta], num_steps, axis=0),
     )
     return rts_smoother(observations, system.prior, linear_transition, linear_observation)
 
@@ -151,33 +151,33 @@ def make_model_fns(system, family, backend):
 
 
 # ---- single-pass smoother runners -------------------------------------------
-def run_single_pass(direction, model_fns, observations, system, nb_steps, temperature=0.0, init_kwargs=None):
+def run_single_pass(direction, model_fns, observations, system, num_steps, temperature=0.0, init_kwargs=None):
     lp, lt, lo = model_fns
     init_kwargs = init_kwargs or {}
     if direction == "forward":
-        fwd_init = make_forward_init(system, nb_steps, **init_kwargs)
+        fwd_init = make_forward_init(system, num_steps, **init_kwargs)
         res = forward_markov_smoother(observations, lp, lt, lo, fwd_init, temperature)
     elif direction == "reverse":
-        rev_init = make_reverse_init(system, nb_steps, **init_kwargs)
+        rev_init = make_reverse_init(system, num_steps, **init_kwargs)
         res = reverse_markov_smoother(observations, lp, lt, lo, rev_init, temperature)
     elif direction == "hybrid":
-        fwd_init = make_forward_init(system, nb_steps, **init_kwargs)
-        rev_init = make_reverse_init(system, nb_steps, **init_kwargs)
+        fwd_init = make_forward_init(system, num_steps, **init_kwargs)
+        rev_init = make_reverse_init(system, num_steps, **init_kwargs)
         res = hybrid_markov_smoother(observations, lp, lt, lo, fwd_init, rev_init, temperature)
     else:
         raise ValueError(direction)
     return get_marginals(direction, res)
 
 
-def single_pass_elbo(direction, model_fns, observations, system, nb_steps, temperature=0.0, init_kwargs=None):
+def single_pass_elbo(direction, model_fns, observations, system, num_steps, temperature=0.0, init_kwargs=None):
     lp, lt, lo = model_fns
     init_kwargs = init_kwargs or {}
     if direction == "forward":
-        fwd_init = make_forward_init(system, nb_steps, **init_kwargs)
+        fwd_init = make_forward_init(system, num_steps, **init_kwargs)
         res = forward_markov_smoother(observations, lp, lt, lo, fwd_init, temperature)
         marg, van = std_forward_message(res), fwd_log_evidence
     elif direction == "reverse":
-        rev_init = make_reverse_init(system, nb_steps, **init_kwargs)
+        rev_init = make_reverse_init(system, num_steps, **init_kwargs)
         res = reverse_markov_smoother(observations, lp, lt, lo, rev_init, temperature)
         marg, van = std_backward_message(res), rev_log_evidence
     else:
