@@ -14,7 +14,7 @@ from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
-from varsmooth.smoothers.reverse_markov import std_backward_message
+from varsmooth.smoothers.utils import std_backward_message
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
 
 jax.config.update("jax_platform_name", "cpu")

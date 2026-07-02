@@ -1,4 +1,4 @@
-from typing import Callable, Tuple
+from typing import Callable
 
 from jax import Array
 import jax.numpy as jnp
@@ -27,7 +27,7 @@ def get_sigma_points(m: Array, chol_P: Array) -> SigmaPoints:
 
 def _cubature_weights(
     nb_dim: int,
-) -> Tuple[Array, Array, Array]:
+) -> tuple[Array, Array, Array]:
     I_dim = jnp.eye(nb_dim)
     wm = jnp.ones(shape=(2 * nb_dim,)) / (2 * nb_dim)
     xi = jnp.concatenate([I_dim, -I_dim], axis=0) * nb_dim**0.5

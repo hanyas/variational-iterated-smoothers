@@ -19,9 +19,9 @@ from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.smoothers.forward_markov import forward_markov_smoother
-from varsmooth.smoothers.forward_markov import log_evidence as fwd_log_evidence
+from varsmooth.smoothers.forward_markov import forward_log_evidence as fwd_log_evidence
 from varsmooth.smoothers.hybrid_markov import hybrid_markov_smoother
-from varsmooth.smoothers.reverse_markov import log_evidence as rev_log_evidence
+from varsmooth.smoothers.reverse_markov import reverse_log_evidence as rev_log_evidence
 from varsmooth.smoothers.reverse_markov import reverse_markov_smoother
 from varsmooth.smoothers.rts_kalman import rts_smoother
 from varsmooth.smoothers.utils import statistical_expansion

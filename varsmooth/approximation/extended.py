@@ -1,5 +1,3 @@
-from typing import Union
-
 import jax
 
 from varsmooth.objects import AdditiveGaussianModel
@@ -20,7 +18,7 @@ def quadratize(fun, q):
     )
 
 
-def linearize(model: Union[AdditiveGaussianModel, ConditionalMomentsModel], q: Gaussian):
+def linearize(model: AdditiveGaussianModel | ConditionalMomentsModel, q: Gaussian):
     """Statistically linearize a model under q via first-order Taylor (Jacobian)."""
     if isinstance(model, AdditiveGaussianModel):
         m_x, _ = q

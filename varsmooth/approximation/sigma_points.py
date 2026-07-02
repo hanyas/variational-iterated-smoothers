@@ -22,6 +22,22 @@ def get_cov(wc, x_pts, x_mean, y_pts, y_mean):
 
 
 class SigmaPoints(NamedTuple):
+    """A set of sigma points with mean and covariance weights.
+
+    Attributes:
+        points: Array
+            Transformed sigma points of shape (n_points, dx), i.e. the unit
+            points mapped through the current mean and Cholesky factor.
+        wm: Array
+            Mean weights of shape (n_points,).
+        wc: Array
+            Covariance weights of shape (n_points,).
+        xi: Array
+            The unit (pre-transform) sigma points of shape (dx, n_points),
+            retained for reuse; not read by the linearize/quadratize routines,
+            which operate on the transformed points above.
+    """
+
     points: Array
     wm: Array
     wc: Array

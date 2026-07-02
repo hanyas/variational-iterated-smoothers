@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Callable, NamedTuple, Tuple
+from typing import Callable, NamedTuple
 
 import jax
 from jax import Array
@@ -42,7 +42,7 @@ def statistical_expansion(
     log_observation_fn: Callable,
     kernels: AffineGaussian,
     marginals: Gaussian,
-) -> Tuple[LogPrior, LogTransition, LogObservation]:
+) -> tuple[LogPrior, LogTransition, LogObservation]:
 
     init_marginal = none_or_idx(marginals, 0)
     prev_marginals = none_or_shift(marginals, -1)
@@ -102,7 +102,7 @@ def _log_message_pass(
     reference: GaussMarkov,
     damping: float,
     reverse: bool,
-) -> Tuple[GaussMarkov, LogMarginalNorm, ValueFn, LogMessage, Array]:
+) -> tuple[GaussMarkov, LogMarginalNorm, ValueFn, LogMessage, Array]:
     """Shared quadratic message pass for the forward and reverse smoothers.
 
     Both directions eliminate one block of every pairwise log-transition and
@@ -538,7 +538,7 @@ def line_search(
     min_param=1e-14,
     max_param=1e14,
     max_iter=100,
-) -> Tuple[float, float, float, bool]:
+) -> tuple[float, float, float, bool]:
     """Bracket a temperature that drives the constraint slack to (near) zero.
 
     Each iteration evaluates the dual objective and the constraint slack once

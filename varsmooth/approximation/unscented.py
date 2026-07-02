@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Tuple
+from typing import Callable
 
 from jax import Array
 import jax.numpy as jnp
@@ -14,7 +14,7 @@ def quadratize(
     q: Gaussian,
     alpha: float = 1.0,
     beta: float = 0.0,
-    kappa: Optional[float] = None,
+    kappa: float | None = None,
 ):
     """Quadratize a scalar function under q with the unscented transform."""
     _get_sigma_points = lambda m, chol_P: get_sigma_points(m, chol_P, alpha, beta, kappa)
@@ -26,14 +26,14 @@ def linearize(
     q: Gaussian,
     alpha: float = 1.0,
     beta: float = 0.0,
-    kappa: Optional[float] = None,
+    kappa: float | None = None,
 ):
     """Statistically linearize a model under q with the unscented transform."""
     _get_sigma_points = lambda m, chol_P: get_sigma_points(m, chol_P, alpha, beta, kappa)
     return make_linearize(_get_sigma_points)(model, q)
 
 
-def get_sigma_points(m: Array, chol_P: Array, alpha: float, beta: float, kappa: Optional[float]) -> SigmaPoints:
+def get_sigma_points(m: Array, chol_P: Array, alpha: float, beta: float, kappa: float | None) -> SigmaPoints:
     nb_dim = m.shape[0]
     if kappa is None:
         kappa = 3.0 + nb_dim
@@ -43,7 +43,7 @@ def get_sigma_points(m: Array, chol_P: Array, alpha: float, beta: float, kappa: 
     return SigmaPoints(sigma_points, wm, wc, xi)
 
 
-def _unscented_weights(nb_dim: int, alpha: float, beta: float, kappa: Optional[float]) -> Tuple[Array, Array, Array]:
+def _unscented_weights(nb_dim: int, alpha: float, beta: float, kappa: float | None) -> tuple[Array, Array, Array]:
     lamda = alpha**2 * (nb_dim + kappa) - nb_dim
     wm = jnp.full(2 * nb_dim + 1, 1 / (2 * (nb_dim + lamda)))
 

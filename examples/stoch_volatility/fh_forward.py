@@ -15,7 +15,7 @@ from varsmooth.objects import ConditionalMomentsModel
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
-from varsmooth.smoothers.forward_markov import std_forward_message
+from varsmooth.smoothers.utils import std_forward_message
 
 jax.config.update("jax_platform_name", "cpu")
 jax.config.update("jax_enable_x64", True)

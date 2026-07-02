@@ -122,6 +122,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
             "log_observation_fn",
             "max_iterations",
             "return_history",
+            "verbose",
         ],
     )
     def iterated_smoother(
@@ -135,6 +136,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         min_temperature=1e-12,
         max_iterations=1000,
         return_history=False,
+        verbose=True,
     ):
         """Iterated KL-constrained smoother with temperature-based early stopping."""
 
@@ -274,7 +276,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                 )
                 return 0
 
-            if not return_history:
+            if verbose and not return_history:
                 jax.lax.cond(feasible, _log_feasible, _log_infeasible, operand=None)
 
             diagnostics = {

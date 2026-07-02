@@ -14,7 +14,7 @@ from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.forward_markov import forward_markov_smoother
 from varsmooth.smoothers.forward_markov import iterated_forward_markov_smoother
-from varsmooth.smoothers.forward_markov import std_forward_message
+from varsmooth.smoothers.utils import std_forward_message
 from varsmooth.smoothers.rts_kalman import rts_smoother
 
 jax.config.update("jax_enable_x64", True)

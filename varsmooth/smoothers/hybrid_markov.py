@@ -11,8 +11,8 @@ from varsmooth.objects import LogMessage
 from varsmooth.objects import ValueFn
 from varsmooth.smoothers.forward_markov import log_backward_message
 from varsmooth.smoothers.forward_markov import std_forward_message
-from varsmooth.smoothers.reverse_markov import dual_objective
 from varsmooth.smoothers.reverse_markov import log_forward_message
+from varsmooth.smoothers.reverse_markov import reverse_dual_objective
 from varsmooth.smoothers.reverse_markov import std_backward_message
 from varsmooth.smoothers.utils import _run_iterations
 from varsmooth.smoothers.utils import kl_between_forward_gauss_markovs
@@ -130,6 +130,7 @@ def update_marginals(
         "log_observation_fn",
         "max_iterations",
         "return_history",
+        "verbose",
     ],
 )
 def iterated_hybrid_markov_smoother(
@@ -144,6 +145,7 @@ def iterated_hybrid_markov_smoother(
     min_temperature: float = 1e-12,
     max_iterations: int = 1000,
     return_history: bool = False,
+    verbose: bool = True,
 ):
     """
     Iterated hybrid-markov smoother with early stopping based on temperature.
@@ -202,7 +204,7 @@ def iterated_hybrid_markov_smoother(
         def dual_objective_fn(temperature):
             """Dual objective function for temperature optimization."""
             damping = temperature / (1.0 + temperature)
-            return dual_objective(
+            return reverse_dual_objective(
                 log_prior=log_prior,
                 log_transition=log_transition,
                 log_observation=log_observation,
@@ -375,7 +377,7 @@ def iterated_hybrid_markov_smoother(
             )
             return 0
 
-        if not return_history:
+        if verbose and not return_history:
             jax.lax.cond(feasible, _log_feasible, _log_infeasible, operand=None)
 
         diagnostics = {

@@ -1,5 +1,3 @@
-from typing import Tuple
-
 from jax import Array
 
 from varsmooth.objects import GaussMarkov
@@ -21,7 +19,7 @@ def log_forward_message(
     log_observation: LogObservation,
     reverse_reference: GaussMarkov,
     damping: float,
-) -> Tuple[GaussMarkov, LogMarginalNorm, ValueFn, LogMessage, Array]:
+) -> tuple[GaussMarkov, LogMarginalNorm, ValueFn, LogMessage, Array]:
     """Forward message pass of the reverse Gauss-Markov smoother.
 
     Eliminates the past state of every pairwise log-transition, accumulating a
@@ -65,8 +63,8 @@ def log_forward_message(
 
 (
     reverse_markov_smoother,
-    dual_objective,
-    log_evidence,
+    reverse_dual_objective,
+    reverse_log_evidence,
     iterated_reverse_markov_smoother,
 ) = make_smoother_suite(
     log_message_fn=log_forward_message,

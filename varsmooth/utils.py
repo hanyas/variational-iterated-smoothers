@@ -1,3 +1,5 @@
+from typing import Literal
+
 import jax
 import jax.numpy as jnp
 
@@ -62,7 +64,7 @@ def none_or_shift(x, shift):
     return jax.tree.map(lambda z: z[:shift], x)
 
 
-def none_or_concat(x, y, position=1):
+def none_or_concat(x, y, position: Literal[1, -1] = 1):
     """Attach a single element y onto batched x, passing None through.
 
     Args:

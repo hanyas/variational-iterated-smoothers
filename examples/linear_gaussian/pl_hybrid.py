@@ -12,7 +12,7 @@ from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
-from varsmooth.smoothers.forward_markov import std_forward_message
+from varsmooth.smoothers.utils import std_forward_message
 from varsmooth.smoothers.rts_kalman import rts_smoother
 from varsmooth.smoothers.hybrid_markov import iterated_hybrid_markov_smoother
 from varsmooth.smoothers.hybrid_markov import hybrid_markov_smoother

@@ -10,7 +10,7 @@ from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.rts_kalman import rts_smoother
 from varsmooth.smoothers.reverse_markov import reverse_markov_smoother
-from varsmooth.smoothers.reverse_markov import std_backward_message
+from varsmooth.smoothers.utils import std_backward_message
 
 
 @pytest.fixture(scope="session", autouse=True)

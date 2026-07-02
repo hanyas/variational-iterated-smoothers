@@ -12,10 +12,10 @@ from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
-from varsmooth.smoothers.forward_markov import std_forward_message
+from varsmooth.smoothers.utils import std_forward_message
 from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
 from varsmooth.smoothers.reverse_markov import reverse_markov_smoother
-from varsmooth.smoothers.reverse_markov import std_backward_message
+from varsmooth.smoothers.utils import std_backward_message
 from varsmooth.smoothers.rts_kalman import rts_smoother
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
 

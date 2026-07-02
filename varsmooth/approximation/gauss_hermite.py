@@ -66,7 +66,7 @@ def mvhermgauss(H: int, D: int):
     return x, w
 
 
-def _gauss_hermite_weights(nb_dim=1, order=20):
+def _gauss_hermite_weights(nb_dim, order):
     """
     Return weights and sigma-points for Gauss-Hermite cubature
     """
