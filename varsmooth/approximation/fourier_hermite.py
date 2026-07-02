@@ -6,9 +6,9 @@ from jax import Array
 from jax import numpy as jnp
 
 from varsmooth.objects import AdditiveGaussianModel
-from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
-from varsmooth.objects import LogObservation
+from varsmooth.objects import Gaussian
+from varsmooth.objects import LogLikelihood
 from varsmooth.objects import LogPrior
 from varsmooth.objects import LogTransition
 
@@ -89,8 +89,8 @@ def get_log_transition(
 
 
 @partial(jax.vmap, in_axes=(0, None, 0, None))
-def get_log_observation(y: Array, h: AdditiveGaussianModel, q: Gaussian, method: Callable) -> LogObservation:
-    """Quadratize the log-observation likelihood under q via Fourier-Hermite.
+def get_log_likelihood(y: Array, h: AdditiveGaussianModel, q: Gaussian, method: Callable) -> LogLikelihood:
+    """Quadratize the log-likelihood under q via Fourier-Hermite.
 
     Quadratizes x -> h.log_prob(y, x) under q. Applied per observation via
     jax.vmap over the (T,) batches of y and q.
@@ -106,10 +106,10 @@ def get_log_observation(y: Array, h: AdditiveGaussianModel, q: Gaussian, method:
             Quadratization routine (logpdf, q) -> (M, v, c).
 
     Returns:
-        LogObservation
+        LogLikelihood
             The quadratized observation as a quadratic log-potential in x.
     """
 
     logpdf = lambda x: h.log_prob(y, x)
     L, l, nu = method(logpdf, q)
-    return LogObservation(L, l, nu)
+    return LogLikelihood(L, l, nu)

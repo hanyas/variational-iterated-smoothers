@@ -56,7 +56,7 @@ def main():
                     observations=ys,
                     log_prior_fn=log_prior_fn,
                     log_transition_fn=log_trans_fn,
-                    log_observation_fn=log_obsrv_fn,
+                    log_likelihood_fn=log_obsrv_fn,
                     init_forward_posterior=init_forward,
                     init_reverse_posterior=init_reverse,
                     kl_constraint=step,

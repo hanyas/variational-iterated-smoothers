@@ -89,12 +89,12 @@ def rts_marginals(system, observations):
         np.repeat([system.b], num_steps, axis=0),
         np.repeat([system.Omega], num_steps, axis=0),
     )
-    linear_observation = AffineGaussian(
+    linear_likelihood = AffineGaussian(
         np.repeat([system.H], num_steps, axis=0),
         np.repeat([system.e], num_steps, axis=0),
         np.repeat([system.Delta], num_steps, axis=0),
     )
-    return rts_smoother(observations, system.prior, linear_transition, linear_observation)
+    return rts_smoother(observations, system.prior, linear_transition, linear_likelihood)
 
 
 def kalman_log_evidence(system, observations):
@@ -123,15 +123,15 @@ def kalman_log_evidence(system, observations):
 def make_model_fns(system, family, backend):
     dim_x = system.A.shape[0]
     dim_y = system.H.shape[0]
-    Q, R, transition_function, observation_function, _, _ = lg_env.make_parameters(
+    Q, R, transition_function, likelihood_function, _, _ = lg_env.make_parameters(
         system.A, system.b, system.Omega, system.H, system.e, system.Delta
     )
     transition_model = AdditiveGaussianModel(
         fun=transition_function,
         noise=Gaussian(jnp.zeros((dim_x,)), Q),
     )
-    observation_model = AdditiveGaussianModel(
-        fun=observation_function,
+    likelihood_model = AdditiveGaussianModel(
+        fun=likelihood_function,
         noise=Gaussian(jnp.zeros((dim_y,)), R),
     )
 
@@ -139,12 +139,12 @@ def make_model_fns(system, family, backend):
         method = GSLR_BACKENDS[backend]
         lp = lambda q: _pl.get_log_prior(system.prior, q, method)
         lt = lambda q, _: _pl.get_log_transition(transition_model, q, method)
-        lo = lambda y, q: _pl.get_log_observation(y, observation_model, q, method)
+        lo = lambda y, q: _pl.get_log_likelihood(y, likelihood_model, q, method)
     elif family == "FH":
         method = FH_BACKENDS[backend]
         lp = lambda q: _fh.get_log_prior(system.prior, q, method)
         lt = lambda q, p: _fh.get_log_transition(transition_model, q, p, method)
-        lo = lambda y, q: _fh.get_log_observation(y, observation_model, q, method)
+        lo = lambda y, q: _fh.get_log_likelihood(y, likelihood_model, q, method)
     else:
         raise ValueError(f"unknown family {family!r}")
     return lp, lt, lo

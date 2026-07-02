@@ -8,7 +8,7 @@ from jax import scipy as jsc
 
 from varsmooth.objects import AdditiveGaussianModel
 from varsmooth.objects import Gaussian
-from varsmooth.objects import LogObservation
+from varsmooth.objects import LogLikelihood
 from varsmooth.objects import LogPrior
 from varsmooth.objects import LogTransition
 from varsmooth.utils import logdet
@@ -80,8 +80,8 @@ def get_log_transition(f: AdditiveGaussianModel, q: Gaussian, method: Callable) 
 
 
 @partial(jax.vmap, in_axes=(0, None, 0, None))
-def get_log_observation(y: Array, h: AdditiveGaussianModel, q: Gaussian, method: Callable) -> LogObservation:
-    """Statistically linearize the observation and write it as a log-observation.
+def get_log_likelihood(y: Array, h: AdditiveGaussianModel, q: Gaussian, method: Callable) -> LogLikelihood:
+    """Statistically linearize the observation and write it as a log-likelihood.
 
     Linearizes h around q into an affine-Gaussian y | x = N(H x + e, Delta),
     then stores the observation log-likelihood as a quadratic in x. Applied per
@@ -98,12 +98,12 @@ def get_log_observation(y: Array, h: AdditiveGaussianModel, q: Gaussian, method:
             Statistical-linearization routine (model, q) -> (H, e, Delta).
 
     Returns:
-        LogObservation
+        LogLikelihood
             The linearized observation as a quadratic log-potential in x.
     """
 
     H, e, Delta = method(h, q)
-    return LogObservation(
+    return LogLikelihood(
         L=H.T @ jsc.linalg.solve(Delta, H),
         l=H.T @ jsc.linalg.solve(Delta, y - e),
         nu=(-0.5 * logdet(2 * jnp.pi * Delta) - 0.5 * (y - e).T @ jsc.linalg.solve(Delta, y - e)),

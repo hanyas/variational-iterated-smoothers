@@ -102,10 +102,10 @@ def make_elbo_evaluator(observations, lp_fn, lt_fn, lo_fn):
 
     @jax.jit
     def elbo_of(marginals, kernels):
-        log_prior, log_transition, log_observation = statistical_expansion(
+        log_prior, log_transition, log_likelihood = statistical_expansion(
             observations, lp_fn, lt_fn, lo_fn, kernels, marginals
         )
-        return free_energy(log_prior, log_transition, log_observation, marginals, kernels)
+        return free_energy(log_prior, log_transition, log_likelihood, marginals, kernels)
 
     return elbo_of
 

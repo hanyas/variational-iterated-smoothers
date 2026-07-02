@@ -29,7 +29,7 @@ def _transition_function_dx(x, mu, phi):
     return phi * jnp.eye(1)
 
 
-def _observation_mean_function(x):
+def _likelihood_mean_function(x):
     """Returns the (zero) conditional mean of the stochastic-volatility observation.
 
     Args:
@@ -43,11 +43,11 @@ def _observation_mean_function(x):
     return jnp.zeros(1)
 
 
-def _observation_mean_function_dx(x):
+def _likelihood_mean_function_dx(x):
     return jnp.zeros((1, 1))
 
 
-def _observation_covariance_function(x):
+def _likelihood_covariance_function(x):
     """Returns the state-dependent conditional covariance Cov[y | x] = exp(x).
 
     Args:
@@ -80,15 +80,15 @@ def make_parameters(mu, phi, sigma):
     Returns:
         Q: array_like
             The transition covariance matrix
-        observation_covariance_function: callable
+        likelihood_covariance_function: callable
             The state-dependent observation covariance (replaces the constant R of additive models)
         transition_function: callable
             The transition function
-        observation_mean_function: callable
+        likelihood_mean_function: callable
             The (zero) observation mean function (replaces the observation function of additive models)
         transition_function_dx: callable
             The derivative of transition function
-        observation_mean_function_dx: callable
+        likelihood_mean_function_dx: callable
             The derivative of the observation mean function
     """
 
@@ -99,11 +99,11 @@ def make_parameters(mu, phi, sigma):
 
     return (
         Q,
-        _observation_covariance_function,
+        _likelihood_covariance_function,
         transition_function,
-        _observation_mean_function,
+        _likelihood_mean_function,
         transition_function_dx,
-        _observation_mean_function_dx,
+        _likelihood_mean_function_dx,
     )
 
 

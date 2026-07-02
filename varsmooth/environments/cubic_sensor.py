@@ -29,7 +29,7 @@ def _transition_function_dx(x, phi0, mu0):
     return phi0 * jnp.eye(1)
 
 
-def _observation_function(x, beta):
+def _likelihood_function(x, beta):
     """Returns the cubic sensor observation as a function of the state.
 
     Args:
@@ -45,7 +45,7 @@ def _observation_function(x, beta):
     return beta * x**3
 
 
-def _observation_function_dx(x, beta):
+def _likelihood_function_dx(x, beta):
     return jnp.array([[3.0 * beta * x[0] ** 2]])
 
 
@@ -75,11 +75,11 @@ def make_parameters(phi0, mu0, sigma0, beta, r):
             The observation covariance matrix
         transition_function: callable
             The transition function
-        observation_function: callable
+        likelihood_function: callable
             The observation function
         transition_function_dx: callable
             The derivative of transition function
-        observation_function_dx: callable
+        likelihood_function_dx: callable
             The derivative of observation function
     """
 
@@ -87,17 +87,17 @@ def make_parameters(phi0, mu0, sigma0, beta, r):
     R = jnp.array([[r**2]])
 
     transition_function = Partial(_transition_function, phi0=phi0, mu0=mu0)
-    observation_function = Partial(_observation_function, beta=beta)
+    likelihood_function = Partial(_likelihood_function, beta=beta)
     transition_function_dx = Partial(_transition_function_dx, phi0=phi0, mu0=mu0)
-    observation_function_dx = Partial(_observation_function_dx, beta=beta)
+    likelihood_function_dx = Partial(_likelihood_function_dx, beta=beta)
 
     return (
         Q,
         R,
         transition_function,
-        observation_function,
+        likelihood_function,
         transition_function_dx,
-        observation_function_dx,
+        likelihood_function_dx,
     )
 
 

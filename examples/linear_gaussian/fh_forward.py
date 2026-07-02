@@ -2,7 +2,7 @@ import jax
 import numpy as np
 
 from varsmooth.approximation import gauss_hermite_quadratization as quadratize
-from varsmooth.approximation.fourier_hermite import get_log_observation
+from varsmooth.approximation.fourier_hermite import get_log_likelihood
 from varsmooth.approximation.fourier_hermite import get_log_prior
 from varsmooth.approximation.fourier_hermite import get_log_transition
 from varsmooth.environments.linear_gaussian import get_data
@@ -28,13 +28,13 @@ num_steps = 25
 
 mu0, P0, A, b, Omega, H, e, Delta = make_random_system(dim_x, dim_y, random_state=0)
 prior_dist = Gaussian(mu0, P0)
-_, _, transition_function, observation_function, _, _ = make_parameters(A, b, Omega, H, e, Delta)
+_, _, transition_function, likelihood_function, _, _ = make_parameters(A, b, Omega, H, e, Delta)
 transition_model = AdditiveGaussianModel(
     fun=transition_function,
     noise=Gaussian(np.zeros((dim_x,)), Omega),
 )
-observation_model = AdditiveGaussianModel(
-    fun=observation_function,
+likelihood_model = AdditiveGaussianModel(
+    fun=likelihood_function,
     noise=Gaussian(np.zeros((dim_y,)), Delta),
 )
 
@@ -43,7 +43,7 @@ _transition_model = AffineGaussian(
     np.repeat([b], num_steps, axis=0),
     np.repeat([Omega], num_steps, axis=0),
 )
-_observation_model = AffineGaussian(
+_likelihood_model = AffineGaussian(
     np.repeat([H], num_steps, axis=0),
     np.repeat([e], num_steps, axis=0),
     np.repeat([Delta], num_steps, axis=0),
@@ -54,7 +54,7 @@ rts_marginals = rts_smoother(
     observations=ys,
     prior_dist=prior_dist,
     linear_transition=_transition_model,
-    linear_observation=_observation_model,
+    linear_likelihood=_likelihood_model,
 )
 
 F = 1e-1 * np.eye(dim_x)
@@ -75,14 +75,14 @@ init_posterior = GaussMarkov(
 
 log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
 log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
+log_likelihood_fn = lambda y, q: get_log_likelihood(y, likelihood_model, q, quadratize)
 
 # single iteration no damping
 forward_markov = forward_markov_smoother(
     observations=ys,
     log_prior_fn=log_prior_fn,
     log_transition_fn=log_transition_fn,
-    log_observation_fn=log_observation_fn,
+    log_likelihood_fn=log_likelihood_fn,
     reference_posterior=init_posterior,
     temperature=0.0,
 )
@@ -96,7 +96,7 @@ forward_markov = forward_markov_smoother(
     observations=ys,
     log_prior_fn=log_prior_fn,
     log_transition_fn=log_transition_fn,
-    log_observation_fn=log_observation_fn,
+    log_likelihood_fn=log_likelihood_fn,
     reference_posterior=init_posterior,
     temperature=1e8,
 )
@@ -113,7 +113,7 @@ forward_markov = iterated_forward_markov_smoother(
     observations=ys,
     log_prior_fn=log_prior_fn,
     log_transition_fn=log_transition_fn,
-    log_observation_fn=log_observation_fn,
+    log_likelihood_fn=log_likelihood_fn,
     init_posterior=init_posterior,
     kl_constraint=1000,
     init_temperature=1e6,

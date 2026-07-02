@@ -21,7 +21,7 @@ with the paper's symbols mapped onto the NamedTuple fields as follows:
 
     NamedTuple        M    v    c       Role
     LogPrior          L    l    nu      log prior over x_0
-    LogObservation    L    l    nu      log observation likelihood
+    LogLikelihood     L    l    nu      log-likelihood of y_k
     ValueFn           R    r    rho     backward/forward value function
     LogMessage        S    s    xi      eliminated-variable message
     LogNormalizer     U    u    eta     marginal log-normalizer
@@ -292,8 +292,8 @@ class LogTransition(NamedTuple):
     kappa: Array
 
 
-class LogObservation(NamedTuple):
-    """Quadratic log-observation likelihood with fields (L, l, nu).
+class LogLikelihood(NamedTuple):
+    """Quadratic log-likelihood with fields (L, l, nu).
 
     Attributes:
         L: Array
@@ -309,5 +309,5 @@ class LogObservation(NamedTuple):
     nu: Array
 
     def predict(self, x: Array) -> Array:
-        """Evaluate the log-observation quadratic at x."""
+        """Evaluate the log-likelihood quadratic at x."""
         return quad_predict(self.L, self.l, self.nu, x)

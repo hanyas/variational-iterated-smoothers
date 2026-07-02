@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from varsmooth.approximation import gauss_hermite_linearization as linearize
-from varsmooth.approximation.linearization import get_log_observation
+from varsmooth.approximation.linearization import get_log_likelihood
 from varsmooth.approximation.linearization import get_log_prior
 from varsmooth.approximation.linearization import get_log_transition
 from varsmooth.environments.bearing_only import get_data
@@ -33,15 +33,15 @@ num_steps = 100  # number of observations
 dim_x, dim_y = 5, 2
 
 _, true_states, observations = get_data(x0, dt, r, num_steps, s1, s2, random_state=1)
-transition_cov, observation_cov, transition_fn, observation_fn, _, _ = make_parameters(qc, qw, r, dt, s1, s2)
+transition_cov, likelihood_cov, transition_fn, likelihood_fn, _, _ = make_parameters(qc, qw, r, dt, s1, s2)
 
 transition_model = AdditiveGaussianModel(
     fun=transition_fn,
     noise=Gaussian(jnp.zeros((dim_x,)), transition_cov),
 )
-observation_model = AdditiveGaussianModel(
-    fun=observation_fn,
-    noise=Gaussian(jnp.zeros((dim_y,)), observation_cov),
+likelihood_model = AdditiveGaussianModel(
+    fun=likelihood_fn,
+    noise=Gaussian(jnp.zeros((dim_y,)), likelihood_cov),
 )
 prior_dist = Gaussian(
     mean=jnp.array([-1.0, -1.0, 0.0, 0.0, 0.0]),
@@ -63,13 +63,13 @@ init_posterior = GaussMarkov(
 
 log_prior_fn = lambda q: get_log_prior(prior_dist, q, linearize)
 log_transition_fn = lambda q, _: get_log_transition(transition_model, q, linearize)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, linearize)
+log_likelihood_fn = lambda y, q: get_log_likelihood(y, likelihood_model, q, linearize)
 
 forward_markov = iterated_forward_markov_smoother(
     observations=jnp.array(observations),
     log_prior_fn=log_prior_fn,
     log_transition_fn=log_transition_fn,
-    log_observation_fn=log_observation_fn,
+    log_likelihood_fn=log_likelihood_fn,
     init_posterior=init_posterior,
     kl_constraint=100,
     init_temperature=1e6,

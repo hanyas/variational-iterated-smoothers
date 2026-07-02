@@ -5,8 +5,8 @@ import jax
 from jax import Array
 from jax import numpy as jnp
 
-from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
+from varsmooth.objects import Gaussian
 from varsmooth.objects import LogMessage
 from varsmooth.objects import ValueFn
 from varsmooth.smoothers.forward_markov import log_backward_message
@@ -30,7 +30,7 @@ def hybrid_markov_smoother(
     observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
-    log_observation_fn: Callable,
+    log_likelihood_fn: Callable,
     forward_reference: GaussMarkov,
     reverse_reference: GaussMarkov,
     temperature: float,
@@ -50,8 +50,8 @@ def hybrid_markov_smoother(
         log_transition_fn: Callable
             Maps reference kernels and marginals to the pairwise quadratic
             log-transitions.
-        log_observation_fn: Callable
-            Maps observations and marginals to the quadratic log-observations.
+        log_likelihood_fn: Callable
+            Maps observations and marginals to the quadratic log-likelihoods.
         forward_reference: GaussMarkov
             The forward Gauss-Markov posterior to expand around.
         reverse_reference: GaussMarkov
@@ -65,11 +65,11 @@ def hybrid_markov_smoother(
     """
     marginals = std_forward_message(forward_reference)
 
-    log_prior, log_transition, log_observation = statistical_expansion(
+    log_prior, log_transition, log_likelihood = statistical_expansion(
         observations=observations,
         log_prior_fn=log_prior_fn,
         log_transition_fn=log_transition_fn,
-        log_observation_fn=log_observation_fn,
+        log_likelihood_fn=log_likelihood_fn,
         kernels=forward_reference.kernels,  # or reverse_reference.kernels
         marginals=marginals,
     )
@@ -78,7 +78,7 @@ def hybrid_markov_smoother(
     forward_posterior, _, _, backward_message, _ = log_backward_message(
         log_prior=log_prior,
         log_transition=log_transition,
-        log_observation=log_observation,
+        log_likelihood=log_likelihood,
         forward_reference=forward_reference,
         damping=damping,
     )
@@ -86,7 +86,7 @@ def hybrid_markov_smoother(
     reverse_posterior, _, forward_message, _, _ = log_forward_message(
         log_prior=log_prior,
         log_transition=log_transition,
-        log_observation=log_observation,
+        log_likelihood=log_likelihood,
         reverse_reference=reverse_reference,
         damping=damping,
     )
@@ -179,7 +179,7 @@ def update_marginals(
     static_argnames=[
         "log_prior_fn",
         "log_transition_fn",
-        "log_observation_fn",
+        "log_likelihood_fn",
         "max_iterations",
         "return_history",
         "verbose",
@@ -189,7 +189,7 @@ def iterated_hybrid_markov_smoother(
     observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
-    log_observation_fn: Callable,
+    log_likelihood_fn: Callable,
     init_forward_posterior: GaussMarkov,
     init_reverse_posterior: GaussMarkov,
     kl_constraint: float,
@@ -214,8 +214,8 @@ def iterated_hybrid_markov_smoother(
         log_transition_fn: Callable
             Maps reference kernels and marginals to the pairwise quadratic
             log-transitions.
-        log_observation_fn: Callable
-            Maps observations and marginals to the quadratic log-observations.
+        log_likelihood_fn: Callable
+            Maps observations and marginals to the quadratic log-likelihoods.
         init_forward_posterior: GaussMarkov
             Initial forward Gauss-Markov posterior.
         init_reverse_posterior: GaussMarkov
@@ -247,11 +247,11 @@ def iterated_hybrid_markov_smoother(
         reference_marginals, forward_reference, reverse_reference = carry
 
         # Step 1: Compute statistical expansion (around the merged marginals)
-        log_prior, log_transition, log_observation = statistical_expansion(
+        log_prior, log_transition, log_likelihood = statistical_expansion(
             observations=observations,
             log_prior_fn=log_prior_fn,
             log_transition_fn=log_transition_fn,
-            log_observation_fn=log_observation_fn,
+            log_likelihood_fn=log_likelihood_fn,
             kernels=forward_reference.kernels,  # or reverse_reference.kernels
             marginals=reference_marginals,
         )
@@ -263,7 +263,7 @@ def iterated_hybrid_markov_smoother(
             return reverse_dual_objective(
                 log_prior=log_prior,
                 log_transition=log_transition,
-                log_observation=log_observation,
+                log_likelihood=log_likelihood,
                 reference_posterior=reverse_reference,
                 kl_constraint=kl_constraint,
                 damping=damping,
@@ -276,14 +276,14 @@ def iterated_hybrid_markov_smoother(
             forward_posterior, _, _, _, fwd_feasible = log_backward_message(
                 log_prior=log_prior,
                 log_transition=log_transition,
-                log_observation=log_observation,
+                log_likelihood=log_likelihood,
                 forward_reference=forward_reference,
                 damping=damping,
             )
             reverse_posterior, _, _, _, rev_feasible = log_forward_message(
                 log_prior=log_prior,
                 log_transition=log_transition,
-                log_observation=log_observation,
+                log_likelihood=log_likelihood,
                 reverse_reference=reverse_reference,
                 damping=damping,
             )
@@ -315,14 +315,14 @@ def iterated_hybrid_markov_smoother(
         full_fwd_post, _, _, full_bwd_msg, full_fwd_feasible = log_backward_message(
             log_prior=log_prior,
             log_transition=log_transition,
-            log_observation=log_observation,
+            log_likelihood=log_likelihood,
             forward_reference=forward_reference,
             damping=0.0,
         )
         full_rev_post, _, full_fwd_msg, _, full_rev_feasible = log_forward_message(
             log_prior=log_prior,
             log_transition=log_transition,
-            log_observation=log_observation,
+            log_likelihood=log_likelihood,
             reverse_reference=reverse_reference,
             damping=0.0,
         )
@@ -366,14 +366,14 @@ def iterated_hybrid_markov_smoother(
         forward_posterior, _, _, backward_message, _ = log_backward_message(
             log_prior=log_prior,
             log_transition=log_transition,
-            log_observation=log_observation,
+            log_likelihood=log_likelihood,
             forward_reference=forward_reference,
             damping=damping,
         )
         reverse_posterior, _, forward_message, _, _ = log_forward_message(
             log_prior=log_prior,
             log_transition=log_transition,
-            log_observation=log_observation,
+            log_likelihood=log_likelihood,
             reverse_reference=reverse_reference,
             damping=damping,
         )

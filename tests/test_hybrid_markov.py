@@ -5,7 +5,7 @@ import pytest
 from tests.lgssm import simulate
 from tests.test_utils import generate_system
 from varsmooth.approximation import gauss_hermite_linearization as linearize
-from varsmooth.approximation.linearization import get_log_observation
+from varsmooth.approximation.linearization import get_log_likelihood
 from varsmooth.approximation.linearization import get_log_prior
 from varsmooth.approximation.linearization import get_log_transition
 from varsmooth.objects import AdditiveGaussianModel
@@ -35,7 +35,7 @@ def _lg_setup(dim_x, dim_y, seed):
     transition_model = AdditiveGaussianModel(lambda x: A @ x + b, Gaussian(np.zeros((dim_x,)), Omega))
 
     _, H, e, Delta, _ = generate_system(dim_x, dim_y)
-    observation_model = AdditiveGaussianModel(lambda x: H @ x + e, Gaussian(np.zeros((dim_y,)), Delta))
+    likelihood_model = AdditiveGaussianModel(lambda x: H @ x + e, Gaussian(np.zeros((dim_y,)), Delta))
 
     _, ys = simulate(prior_dist.mean, A, b, Omega, H, e, Delta, num_steps)
     rts_marginals = rts_smoother(
@@ -46,7 +46,7 @@ def _lg_setup(dim_x, dim_y, seed):
             np.repeat([b], num_steps, axis=0),
             np.repeat([Omega], num_steps, axis=0),
         ),
-        linear_observation=AffineGaussian(
+        linear_likelihood=AffineGaussian(
             np.repeat([H], num_steps, axis=0),
             np.repeat([e], num_steps, axis=0),
             np.repeat([Delta], num_steps, axis=0),
@@ -68,9 +68,9 @@ def _lg_setup(dim_x, dim_y, seed):
 
     log_prior_fn = lambda q: get_log_prior(prior_dist, q, linearize)
     log_transition_fn = lambda q, _: get_log_transition(transition_model, q, linearize)
-    log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, linearize)
+    log_likelihood_fn = lambda y, q: get_log_likelihood(y, likelihood_model, q, linearize)
 
-    model_fns = (log_prior_fn, log_transition_fn, log_observation_fn)
+    model_fns = (log_prior_fn, log_transition_fn, log_likelihood_fn)
     return ys, rts_marginals, init_forward, init_reverse, model_fns
 
 

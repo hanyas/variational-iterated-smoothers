@@ -1,9 +1,9 @@
 from jax import Array
 
 from varsmooth.objects import GaussMarkov
+from varsmooth.objects import LogLikelihood
 from varsmooth.objects import LogMessage
 from varsmooth.objects import LogNormalizer
-from varsmooth.objects import LogObservation
 from varsmooth.objects import LogPrior
 from varsmooth.objects import LogTransition
 from varsmooth.objects import ValueFn
@@ -16,7 +16,7 @@ from varsmooth.smoothers.utils import std_forward_message
 def log_backward_message(
     log_prior: LogPrior,
     log_transition: LogTransition,
-    log_observation: LogObservation,
+    log_likelihood: LogLikelihood,
     forward_reference: GaussMarkov,
     damping: float,
 ) -> tuple[GaussMarkov, LogNormalizer, ValueFn, LogMessage, Array]:
@@ -31,8 +31,8 @@ def log_backward_message(
             Quadratic log-prior over the root state x_0.
         log_transition: LogTransition
             Batched pairwise quadratic log-transitions of leading shape (T,).
-        log_observation: LogObservation
-            Batched quadratic log-observations of leading shape (T,).
+        log_likelihood: LogLikelihood
+            Batched quadratic log-likelihoods of leading shape (T,).
         forward_reference: GaussMarkov
             The forward Gauss-Markov posterior to expand around.
         damping: float
@@ -54,7 +54,7 @@ def log_backward_message(
     return _log_message_pass(
         log_prior,
         log_transition,
-        log_observation,
+        log_likelihood,
         forward_reference,
         damping,
         reverse=True,

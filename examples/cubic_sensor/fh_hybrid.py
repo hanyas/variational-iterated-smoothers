@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from varsmooth.approximation import gauss_hermite_quadratization as quadratize
-from varsmooth.approximation.fourier_hermite import get_log_observation
+from varsmooth.approximation.fourier_hermite import get_log_likelihood
 from varsmooth.approximation.fourier_hermite import get_log_prior
 from varsmooth.approximation.fourier_hermite import get_log_transition
 from varsmooth.environments.cubic_sensor import get_data
@@ -32,15 +32,15 @@ dim_x, dim_y = 1, 1
 rng = np.random.RandomState(23)
 x0 = mu0 + np.sqrt(sigma0) * rng.randn()
 _, true_states, observations = get_data(x0, phi0, mu0, sigma0, beta, r, num_steps, random_state=rng)
-transition_cov, observation_cov, transition_fn, observation_fn, _, _ = make_parameters(phi0, mu0, sigma0, beta, r)
+transition_cov, likelihood_cov, transition_fn, likelihood_fn, _, _ = make_parameters(phi0, mu0, sigma0, beta, r)
 
 transition_model = AdditiveGaussianModel(
     fun=transition_fn,
     noise=Gaussian(jnp.zeros((dim_x,)), transition_cov),
 )
-observation_model = AdditiveGaussianModel(
-    fun=observation_fn,
-    noise=Gaussian(jnp.zeros((dim_y,)), observation_cov),
+likelihood_model = AdditiveGaussianModel(
+    fun=likelihood_fn,
+    noise=Gaussian(jnp.zeros((dim_y,)), likelihood_cov),
 )
 prior_dist = Gaussian(
     mean=jnp.array([mu0]),
@@ -63,13 +63,13 @@ init_rvs_posterior = initialize_reverse_with_forward(init_fwd_posterior)
 
 log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
 log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
-log_observation_fn = lambda y, q: get_log_observation(y, observation_model, q, quadratize)
+log_likelihood_fn = lambda y, q: get_log_likelihood(y, likelihood_model, q, quadratize)
 
 marginals = iterated_hybrid_markov_smoother(
     observations=jnp.array(observations),
     log_prior_fn=log_prior_fn,
     log_transition_fn=log_transition_fn,
-    log_observation_fn=log_observation_fn,
+    log_likelihood_fn=log_likelihood_fn,
     init_forward_posterior=init_fwd_posterior,
     init_reverse_posterior=init_rvs_posterior,
     kl_constraint=10,

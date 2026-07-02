@@ -5,14 +5,14 @@ from jax import numpy as jnp
 from jax import scipy as jsc
 
 from varsmooth.objects import AffineGaussian
-from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
+from varsmooth.objects import Gaussian
 from varsmooth.smoothers.utils import std_forward_message
 from varsmooth.utils import none_or_concat
 from varsmooth.utils import none_or_shift
 
 
-def filtering(observations, prior_dist, linear_transition, linear_observation):
+def filtering(observations, prior_dist, linear_transition, linear_likelihood):
     """Run the Kalman filter forward pass over an affine-Gaussian model.
 
     Scans the predict-update recursion from the prior, producing the filtering
@@ -25,7 +25,7 @@ def filtering(observations, prior_dist, linear_transition, linear_observation):
             The prior marginal over the root state x_0.
         linear_transition: AffineGaussian
             Batched affine-Gaussian transition kernels of leading shape (T,).
-        linear_observation: AffineGaussian
+        linear_likelihood: AffineGaussian
             Batched affine-Gaussian observation models of leading shape (T,).
 
     Returns:
@@ -57,7 +57,7 @@ def filtering(observations, prior_dist, linear_transition, linear_observation):
         qf = _update(H, e, Delta, qp, y)
         return qf, qf
 
-    _, filter_marginals = jax.lax.scan(body, prior_dist, (observations, linear_transition, linear_observation))
+    _, filter_marginals = jax.lax.scan(body, prior_dist, (observations, linear_transition, linear_likelihood))
     return none_or_concat(filter_marginals, prior_dist, 1)
 
 
@@ -115,7 +115,7 @@ def rts_smoother(
     observations,
     prior_dist: Gaussian,
     linear_transition: AffineGaussian,
-    linear_observation: AffineGaussian,
+    linear_likelihood: AffineGaussian,
 ) -> Gaussian:
     """Run the full Kalman (RTS) smoother and return its marginals.
 
@@ -129,12 +129,12 @@ def rts_smoother(
             The prior marginal over the root state x_0.
         linear_transition: AffineGaussian
             Batched affine-Gaussian transition kernels of leading shape (T,).
-        linear_observation: AffineGaussian
+        linear_likelihood: AffineGaussian
             Batched affine-Gaussian observation models of leading shape (T,).
 
     Returns:
         Gaussian
             The smoothing marginals of leading shape (T + 1,).
     """
-    filter_trajectory = filtering(observations, prior_dist, linear_transition, linear_observation)
+    filter_trajectory = filtering(observations, prior_dist, linear_transition, linear_likelihood)
     return std_forward_message(smoothing(linear_transition, filter_trajectory))

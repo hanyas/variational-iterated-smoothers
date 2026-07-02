@@ -29,7 +29,7 @@ def _transition_function_dx(x, A, b):
     return A
 
 
-def _observation_function(x, H, e):
+def _likelihood_function(x, H, e):
     """Returns the linear observation as a function of the state.
 
     Args:
@@ -47,7 +47,7 @@ def _observation_function(x, H, e):
     return H @ x + e
 
 
-def _observation_function_dx(x, H, e):
+def _likelihood_function_dx(x, H, e):
     return H
 
 
@@ -111,28 +111,28 @@ def make_parameters(A, b, Omega, H, e, Delta):
             The observation covariance matrix (Delta)
         transition_function: callable
             The transition function
-        observation_function: callable
+        likelihood_function: callable
             The observation function
         transition_function_dx: callable
             The derivative of transition function
-        observation_function_dx: callable
+        likelihood_function_dx: callable
             The derivative of observation function
     """
     Q = jnp.asarray(Omega)
     R = jnp.asarray(Delta)
 
     transition_function = Partial(_transition_function, A=jnp.asarray(A), b=jnp.asarray(b))
-    observation_function = Partial(_observation_function, H=jnp.asarray(H), e=jnp.asarray(e))
+    likelihood_function = Partial(_likelihood_function, H=jnp.asarray(H), e=jnp.asarray(e))
     transition_function_dx = Partial(_transition_function_dx, A=jnp.asarray(A), b=jnp.asarray(b))
-    observation_function_dx = Partial(_observation_function_dx, H=jnp.asarray(H), e=jnp.asarray(e))
+    likelihood_function_dx = Partial(_likelihood_function_dx, H=jnp.asarray(H), e=jnp.asarray(e))
 
     return (
         Q,
         R,
         transition_function,
-        observation_function,
+        likelihood_function,
         transition_function_dx,
-        observation_function_dx,
+        likelihood_function_dx,
     )
 
 

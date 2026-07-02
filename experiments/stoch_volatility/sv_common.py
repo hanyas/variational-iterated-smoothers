@@ -62,12 +62,12 @@ def make_model_fns(system, family, backend):
         method = GSLR_BACKENDS[backend]
         lp = lambda q: _pl.get_log_prior(system.prior, q, method)
         lt = lambda q, _: _pl.get_log_transition(trans, q, method)
-        lo = lambda y, q: _pl.get_log_observation(y, obs, q, method)
+        lo = lambda y, q: _pl.get_log_likelihood(y, obs, q, method)
     elif family == "FH":
         method = FH_BACKENDS[backend]
         lp = lambda q: _fh.get_log_prior(system.prior, q, method)
         lt = lambda q, p: _fh.get_log_transition(trans, q, p, method)
-        lo = lambda y, q: _fh.get_log_observation(y, obs, q, method)
+        lo = lambda y, q: _fh.get_log_likelihood(y, obs, q, method)
     else:
         raise ValueError(f"unknown family {family!r}")
     return lp, lt, lo

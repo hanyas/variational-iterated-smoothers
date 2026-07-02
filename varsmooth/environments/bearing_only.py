@@ -92,7 +92,7 @@ def _transition_function_dx(x, dt):
     return df
 
 
-def _observation_function(x, s1, s2):
+def _likelihood_function(x, s1, s2):
     """Returns the observed angles as function of the state and the sensors locations.
 
     Args:
@@ -115,7 +115,7 @@ def _observation_function(x, s1, s2):
     )
 
 
-def _observation_function_dx(x, s1, s2):
+def _likelihood_function_dx(x, s1, s2):
     return jnp.array(
         [
             [
@@ -187,11 +187,11 @@ def make_parameters(qc, qw, r, dt, s1, s2):
             The observation covariance matrix
         transition_function: callable
             The transition function
-        observation_function: callable
+        likelihood_function: callable
             The observation function
         transition_function_dx: callable
             The derivative of transition function
-        observation_function_dx: callable
+        likelihood_function_dx: callable
             The derivative of observation function
     """
 
@@ -207,18 +207,18 @@ def make_parameters(qc, qw, r, dt, s1, s2):
 
     R = r**2 * jnp.eye(2)
 
-    observation_function = Partial(_observation_function, s1=s1, s2=s2)
+    likelihood_function = Partial(_likelihood_function, s1=s1, s2=s2)
     transition_function = Partial(_transition_function, dt=dt)
-    observation_function_dx = Partial(_observation_function_dx, s1=s1, s2=s2)
+    likelihood_function_dx = Partial(_likelihood_function_dx, s1=s1, s2=s2)
     transition_function_dx = Partial(_transition_function_dx, dt=dt)
 
     return (
         Q,
         R,
         transition_function,
-        observation_function,
+        likelihood_function,
         transition_function_dx,
-        observation_function_dx,
+        likelihood_function_dx,
     )
 
 

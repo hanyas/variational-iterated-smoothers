@@ -7,11 +7,11 @@ from jax import numpy as jnp
 from jax import scipy as jsc
 
 from varsmooth.objects import AffineGaussian
-from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
+from varsmooth.objects import Gaussian
+from varsmooth.objects import LogLikelihood
 from varsmooth.objects import LogMessage
 from varsmooth.objects import LogNormalizer
-from varsmooth.objects import LogObservation
 from varsmooth.objects import LogPrior
 from varsmooth.objects import LogTransition
 from varsmooth.objects import ValueFn
@@ -51,10 +51,10 @@ def statistical_expansion(
     observations: Array,
     log_prior_fn: Callable,
     log_transition_fn: Callable,
-    log_observation_fn: Callable,
+    log_likelihood_fn: Callable,
     kernels: AffineGaussian,
     marginals: Gaussian,
-) -> tuple[LogPrior, LogTransition, LogObservation]:
+) -> tuple[LogPrior, LogTransition, LogLikelihood]:
     """Expand the model into quadratic log-potentials around a nominal posterior.
 
     Evaluates the prior, transition, and observation expansion functions at the
@@ -70,8 +70,8 @@ def statistical_expansion(
             Maps the root marginal to a LogPrior.
         log_transition_fn: Callable
             Maps the preceding marginals and kernels to batched LogTransition.
-        log_observation_fn: Callable
-            Maps the observations and their marginals to batched LogObservation.
+        log_likelihood_fn: Callable
+            Maps the observations and their marginals to batched LogLikelihood.
         kernels: AffineGaussian
             Nominal Gauss-Markov kernels of leading shape (T,) to expand around.
         marginals: Gaussian
@@ -82,8 +82,8 @@ def statistical_expansion(
             Quadratic log-prior over the root state.
         log_transition: LogTransition
             Batched quadratic log-transitions of leading shape (T,).
-        log_observation: LogObservation
-            Batched quadratic log-observations of leading shape (T,).
+        log_likelihood: LogLikelihood
+            Batched quadratic log-likelihoods of leading shape (T,).
     """
 
     init_marginal = none_or_idx(marginals, 0)
@@ -92,14 +92,14 @@ def statistical_expansion(
 
     log_prior = log_prior_fn(init_marginal)
     log_transition = log_transition_fn(prev_marginals, kernels)
-    log_observation = log_observation_fn(observations, next_marginals)
-    return log_prior, log_transition, log_observation
+    log_likelihood = log_likelihood_fn(observations, next_marginals)
+    return log_prior, log_transition, log_likelihood
 
 
 def free_energy(
     log_prior: LogPrior,
     log_transition: LogTransition,
-    log_observation: LogObservation,
+    log_likelihood: LogLikelihood,
     marginals: Gaussian,
     kernels: AffineGaussian,
 ):
@@ -115,8 +115,8 @@ def free_energy(
             Quadratic log-prior over the root state.
         log_transition: LogTransition
             Batched quadratic log-transitions of leading shape (T,).
-        log_observation: LogObservation
-            Batched quadratic log-observations of leading shape (T,).
+        log_likelihood: LogLikelihood
+            Batched quadratic log-likelihoods of leading shape (T,).
         marginals: Gaussian
             Posterior marginals of leading shape (T + 1,).
         kernels: AffineGaussian
@@ -142,7 +142,7 @@ def free_energy(
 
     # observations:  sum_k E_{q(x_k)}[log p(y_k | x_k)]
     obs_terms = jax.vmap(lambda lo, mk, Pk: _expected_quadratic(lo.L, lo.l, lo.nu, mk, Pk))(
-        log_observation, m[1:], P[1:]
+        log_likelihood, m[1:], P[1:]
     )
 
     # transitions:  sum_k E_{q(x_k, x_{k+1})}[log p(x_{k+1} | x_k)]  over the twin marginal
@@ -164,7 +164,7 @@ def free_energy(
 def _log_message_pass(
     log_prior: LogPrior,
     log_transition: LogTransition,
-    log_observation: LogObservation,
+    log_likelihood: LogLikelihood,
     reference: GaussMarkov,
     damping: float,
     reverse: bool,
@@ -184,8 +184,8 @@ def _log_message_pass(
             Quadratic log-prior over the boundary state.
         log_transition: LogTransition
             Batched pairwise quadratic log-transitions of leading shape (T,).
-        log_observation: LogObservation
-            Batched quadratic log-observations of leading shape (T,).
+        log_likelihood: LogLikelihood
+            Batched quadratic log-likelihoods of leading shape (T,).
         reference: GaussMarkov
             The Gauss-Markov posterior to expand around; its kernels supply the
             nominal linearization and its marginal the boundary.
@@ -279,18 +279,18 @@ def _log_message_pass(
     if reverse:
         # backward pass: the last observation seeds the recursion, the prior
         # enters as the root pseudo-observation, and observations shift down.
-        last_log_obs = none_or_idx(log_observation, -1)
+        last_log_obs = none_or_idx(log_likelihood, -1)
         boundary_value_fn = ValueFn(R=last_log_obs.L, r=last_log_obs.l, rho=last_log_obs.nu)
         obs_stream = none_or_concat(
-            none_or_shift(log_observation, -1),
-            LogObservation(log_prior.L, log_prior.l, log_prior.nu),
+            none_or_shift(log_likelihood, -1),
+            LogLikelihood(log_prior.L, log_prior.l, log_prior.nu),
             1,
         )
         concat_position = -1
     else:
         # forward pass: the prior seeds the recursion and observations feed in order.
         boundary_value_fn = ValueFn(R=log_prior.L, r=log_prior.l, rho=log_prior.nu)
-        obs_stream = log_observation
+        obs_stream = log_likelihood
         concat_position = 1
 
     nominal_marginal, nominal_kernels = reference

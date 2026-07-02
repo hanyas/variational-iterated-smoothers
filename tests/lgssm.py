@@ -19,7 +19,7 @@ def transition_fn(x, A):
     return jnp.dot(A, x)
 
 
-def observation_fn(x, H):
+def likelihood_fn(x, H):
     """Apply the linear observation map H to the state x.
 
     Args:

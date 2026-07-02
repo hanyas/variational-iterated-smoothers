@@ -16,7 +16,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         log_message_fn: Callable
             log_forward_message (reverse smoother) or log_backward_message
             (forward smoother). Maps (log_prior, log_transition,
-            log_observation, reference, damping) to (posterior, log_marg_norm,
+            log_likelihood, reference, damping) to (posterior, log_marg_norm,
             value_fns, log_msgs, feasible).
         std_marginal_fn: Callable
             std_backward_message (reverse) or std_forward_message (forward);
@@ -40,7 +40,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         observations,
         log_prior_fn,
         log_transition_fn,
-        log_observation_fn,
+        log_likelihood_fn,
         reference_posterior,
         temperature,
     ):
@@ -54,9 +54,9 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
             log_transition_fn: Callable
                 Maps reference kernels and marginals to the pairwise quadratic
                 log-transitions.
-            log_observation_fn: Callable
+            log_likelihood_fn: Callable
                 Maps observations and marginals to the quadratic
-                log-observations.
+                log-likelihoods.
             reference_posterior: GaussMarkov
                 The Gauss-Markov posterior to expand around.
             temperature: float
@@ -67,11 +67,11 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                 The updated Gauss-Markov posterior after a single pass.
         """
         marginals = std_marginal_fn(reference_posterior)
-        log_prior, log_transition, log_observation = statistical_expansion(
+        log_prior, log_transition, log_likelihood = statistical_expansion(
             observations,
             log_prior_fn,
             log_transition_fn,
-            log_observation_fn,
+            log_likelihood_fn,
             reference_posterior.kernels,
             marginals,
         )
@@ -79,7 +79,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         posterior, _, _, _, _ = log_message_fn(
             log_prior,
             log_transition,
-            log_observation,
+            log_likelihood,
             reference_posterior,
             damping,
         )
@@ -88,7 +88,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
     def dual_objective(
         log_prior,
         log_transition,
-        log_observation,
+        log_likelihood,
         reference_posterior,
         kl_constraint,
         damping,
@@ -104,8 +104,8 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                 Quadratic log-prior over the boundary state.
             log_transition: LogTransition
                 Batched pairwise quadratic log-transitions of leading shape (T,).
-            log_observation: LogObservation
-                Batched quadratic log-observations of leading shape (T,).
+            log_likelihood: LogLikelihood
+                Batched quadratic log-likelihoods of leading shape (T,).
             reference_posterior: GaussMarkov
                 The Gauss-Markov posterior to expand around.
             kl_constraint: float
@@ -120,7 +120,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         _, log_norm, _, _, feasible = log_message_fn(
             log_prior,
             log_transition,
-            log_observation,
+            log_likelihood,
             reference_posterior,
             damping,
         )
@@ -137,7 +137,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
     def log_normalizer(
         log_prior,
         log_transition,
-        log_observation,
+        log_likelihood,
         reference_posterior,
         damping,
     ):
@@ -148,8 +148,8 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                 Quadratic log-prior over the boundary state.
             log_transition: LogTransition
                 Batched pairwise quadratic log-transitions of leading shape (T,).
-            log_observation: LogObservation
-                Batched quadratic log-observations of leading shape (T,).
+            log_likelihood: LogLikelihood
+                Batched quadratic log-likelihoods of leading shape (T,).
             reference_posterior: GaussMarkov
                 The Gauss-Markov posterior to expand around.
             damping: float
@@ -163,7 +163,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         _, log_norm, _, _, _ = log_message_fn(
             log_prior,
             log_transition,
-            log_observation,
+            log_likelihood,
             reference_posterior,
             damping,
         )
@@ -174,7 +174,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
     def log_evidence(
         log_prior,
         log_transition,
-        log_observation,
+        log_likelihood,
         reference_posterior,
     ):
         """Return the undamped marginal log-evidence (log-normalizer at damping 0).
@@ -184,8 +184,8 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                 Quadratic log-prior over the boundary state.
             log_transition: LogTransition
                 Batched pairwise quadratic log-transitions of leading shape (T,).
-            log_observation: LogObservation
-                Batched quadratic log-observations of leading shape (T,).
+            log_likelihood: LogLikelihood
+                Batched quadratic log-likelihoods of leading shape (T,).
             reference_posterior: GaussMarkov
                 The Gauss-Markov posterior to expand around.
 
@@ -196,7 +196,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         return log_normalizer(
             log_prior,
             log_transition,
-            log_observation,
+            log_likelihood,
             reference_posterior,
             0.0,
         )
@@ -206,7 +206,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         static_argnames=[
             "log_prior_fn",
             "log_transition_fn",
-            "log_observation_fn",
+            "log_likelihood_fn",
             "max_iterations",
             "return_history",
             "verbose",
@@ -216,7 +216,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         observations,
         log_prior_fn,
         log_transition_fn,
-        log_observation_fn,
+        log_likelihood_fn,
         init_posterior,
         kl_constraint,
         init_temperature=1e12,
@@ -239,9 +239,9 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
             log_transition_fn: Callable
                 Maps reference kernels and marginals to the pairwise quadratic
                 log-transitions.
-            log_observation_fn: Callable
+            log_likelihood_fn: Callable
                 Maps observations and marginals to the quadratic
-                log-observations.
+                log-likelihoods.
             init_posterior: GaussMarkov
                 Initial Gauss-Markov posterior to start the iterations from.
             kl_constraint: float
@@ -269,11 +269,11 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
 
         def single_iteration(reference, iteration_idx):
             marginals = std_marginal_fn(reference)
-            log_prior, log_transition, log_observation = statistical_expansion(
+            log_prior, log_transition, log_likelihood = statistical_expansion(
                 observations,
                 log_prior_fn,
                 log_transition_fn,
-                log_observation_fn,
+                log_likelihood_fn,
                 reference.kernels,
                 marginals,
             )
@@ -283,7 +283,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                 return dual_objective(
                     log_prior,
                     log_transition,
-                    log_observation,
+                    log_likelihood,
                     reference,
                     kl_constraint,
                     damping,
@@ -295,7 +295,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                 posterior, _, _, _, feasible_flags = log_message_fn(
                     log_prior,
                     log_transition,
-                    log_observation,
+                    log_likelihood,
                     reference,
                     damping,
                 )
@@ -322,7 +322,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
             full_posterior, _, _, _, full_feasible = log_message_fn(
                 log_prior,
                 log_transition,
-                log_observation,
+                log_likelihood,
                 reference,
                 0.0,
             )
@@ -349,7 +349,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
             candidate, _, _, _, _ = log_message_fn(
                 log_prior,
                 log_transition,
-                log_observation,
+                log_likelihood,
                 reference,
                 damping,
             )
@@ -379,7 +379,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
             elbo_value = free_energy(
                 log_prior,
                 log_transition,
-                log_observation,
+                log_likelihood,
                 marginals,
                 reference.kernels,
             )
