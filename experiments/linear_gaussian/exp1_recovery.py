@@ -6,7 +6,10 @@ Outputs:
 Run from this directory: python exp1_recovery.py
 """
 
-import lg_common as lg
+if __package__:
+    from . import lg_common as lg
+else:
+    import lg_common as lg
 import numpy as np
 
 BACKENDS = [("GSLR", b) for b in lg.GSLR_BACKENDS] + [("FH", b) for b in lg.FH_BACKENDS]
