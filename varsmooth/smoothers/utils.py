@@ -7,8 +7,8 @@ from jax import numpy as jnp
 from jax import scipy as jsc
 
 from varsmooth.objects import AffineGaussian
-from varsmooth.objects import GaussMarkov
 from varsmooth.objects import Gaussian
+from varsmooth.objects import GaussMarkov
 from varsmooth.objects import LogLikelihood
 from varsmooth.objects import LogMessage
 from varsmooth.objects import LogNormalizer
@@ -73,7 +73,7 @@ def statistical_expansion(
         log_likelihood_fn: Callable
             Maps the observations and their marginals to batched LogLikelihood.
         kernels: AffineGaussian
-            Nominal Gauss-Markov kernels of leading shape (T,) to expand around.
+            Forward conditional kernels of leading shape (T,) to expand around.
         marginals: Gaussian
             Nominal marginals of leading shape (T + 1,) to expand around.
 
@@ -330,7 +330,7 @@ def _log_message_pass(
 
         # log normalizer
         U = Joo - Jeo.T @ iJee_Jeo
-        u = jo - Jeo.T @ iJee_je
+        u = jo + Jeo.T @ iJee_je
         eta = tau + 0.5 * (dim * jnp.log(2 * jnp.pi) - logdet_Jee) + 0.5 * je.T @ iJee_je
         return Gaussian(post_m, post_P), LogNormalizer(U, u, eta)
 

@@ -70,4 +70,5 @@ def log_forward_message(
     log_message_fn=log_forward_message,
     std_marginal_fn=std_backward_message,
     kl_fn=kl_between_reverse_gauss_markovs,
+    reverse=True,
 )
