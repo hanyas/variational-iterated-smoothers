@@ -83,6 +83,7 @@ Single-run demonstrations live under `examples/`, one directory per model family
 - `bearing_only` — nonlinear coordinated-turn (bearings-only) tracking.
 - `cubic_sensor` — scalar AR(1) state observed through a cubic sensor (Katayama, 2013).
 - `stoch_volatility` — univariate stochastic-volatility model.
+- `differential_drive` — five-dimensional controlled robot with pose observations (Courts et al., 2021).
 
 Each script selects a smoother and an approximation: the prefix is `pl_` (posterior linearization) or `fh_` (Fourier–Hermite), and the suffix is `_forward`, `_reverse`, or `_hybrid`. Available combinations vary by model. For example:
 
@@ -90,6 +91,8 @@ Each script selects a smoother and an approximation: the prefix is `pl_` (poster
 python examples/linear_gaussian/fh_hybrid.py
 python examples/bearing_only/pl_reverse.py
 ```
+
+The scalar models use Gauss–Hermite rules; the five-dimensional models use third-degree cubature, since Gauss–Hermite grows exponentially with the joint state dimension. The differential-drive scripts also show how a time-varying transition (here, per-step wheel forces) is handled: map the unbatched `quadratize_log_transition` over the controls instead of calling the batched `get_log_transition`.
 
 ## Citation
 
