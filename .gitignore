@@ -458,3 +458,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+
+# Experiment artefacts and local-only baseline implementations
+outputs/
+varsmooth/baselines/
+Rebuttal.md
