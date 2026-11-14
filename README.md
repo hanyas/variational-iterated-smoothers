@@ -42,7 +42,7 @@ likelihood = AdditiveGaussianModel(lambda x: H @ x, Gaussian(np.zeros(dim), 0.1 
 observations = np.zeros((num_steps, dim))  # replace with your data
 
 # initial forward Gauss-Markov posterior: a root marginal plus num_steps kernels
-init = GaussMarkov(
+init_markov = GaussMarkov(
     marginal=prior,
     kernels=AffineGaussian(
         np.repeat([0.1 * np.eye(dim)], num_steps, axis=0),
@@ -57,8 +57,17 @@ log_transition_fn = lambda q, _: get_log_transition(transition, q, linearize)
 log_likelihood_fn = lambda y, q: get_log_likelihood(y, likelihood, q, linearize)
 
 posterior = iterated_forward_markov_smoother(
-    observations, log_prior_fn, log_transition_fn, log_likelihood_fn,
-    init, kl_constraint=1.0, verbose=False,
+    observations=observations,
+    log_prior_fn=log_prior_fn,
+    log_transition_fn=log_transition_fn,
+    log_likelihood_fn=log_likelihood_fn,
+    init_posterior=init_markov,
+    kl_constraint=1.0,
+    init_temperature=1e12,
+    min_temperature=1e-12,
+    max_iterations=1000,
+    return_history=False,
+    verbose=True,
 )
 marginals = std_forward_message(posterior)  # Gaussian marginals over x_0 .. x_T
 ```
@@ -110,3 +119,4 @@ If you find this code useful, please cite the paper
 ## Credit
 
 This project uses code snippets from [sqrt-parallel-smoothers](https://github.com/EEA-sensors/sqrt-parallel-smoothers).
+This project uses code adapted from [BayesNewton](https://github.com/AaltoML/BayesNewton).
