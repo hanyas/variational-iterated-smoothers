@@ -1,9 +1,11 @@
+"""Bearings-only tracking: iterated forward smoother with posterior linearization."""
+
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from varsmooth.approximation import gauss_hermite_linearization as linearize
+from varsmooth.approximation import cubature_linearization as linearize
 from varsmooth.approximation.linearization import get_log_likelihood
 from varsmooth.approximation.linearization import get_log_prior
 from varsmooth.approximation.linearization import get_log_transition
@@ -18,21 +20,26 @@ from varsmooth.smoothers.utils import std_forward_message
 
 jax.config.update("jax_platform_name", "cpu")
 jax.config.update("jax_enable_x64", True)
-# jax.config.update('jax_disable_jit', True)
 
 
-s1 = jnp.array([-1.5, 0.5])  # First sensor location
-s2 = jnp.array([1.0, 1.0])  # Second sensor location
-x0 = jnp.array([0.1, 0.2, 1, 0])  # initial true location
-r = 0.5  # Observation noise (stddev)
+s1 = jnp.array([-1.5, 0.5])  # first sensor location
+s2 = jnp.array([1.0, 1.0])  # second sensor location
+r = 0.5  # observation noise (stddev)
 dt = 0.01  # discretization time step
-qc = 0.01  # discretization noise
-qw = 0.1  # discretization noise
+qc = 0.01  # translational process-noise intensity
+qw = 0.1  # turn-rate process-noise intensity
 
-num_steps = 100  # number of observations
+num_steps = 500  # number of observations
 dim_x, dim_y = 5, 2
 
-_, true_states, observations = get_data(x0, dt, r, num_steps, s1, s2, random_state=1)
+prior_dist = Gaussian(
+    mean=jnp.array([-1.0, -1.0, 0.0, 0.0, 0.0]),
+    cov=jnp.eye(dim_x),
+)
+
+rng = np.random.RandomState(23)
+x0 = rng.multivariate_normal(prior_dist.mean, prior_dist.cov)
+_, true_states, observations = get_data(x0, dt, r, num_steps, s1, s2, qc=qc, qw=qw, random_state=rng)
 transition_cov, likelihood_cov, transition_fn, likelihood_fn, _, _ = make_parameters(qc, qw, r, dt, s1, s2)
 
 transition_model = AdditiveGaussianModel(
@@ -42,10 +49,6 @@ transition_model = AdditiveGaussianModel(
 likelihood_model = AdditiveGaussianModel(
     fun=likelihood_fn,
     noise=Gaussian(jnp.zeros((dim_y,)), likelihood_cov),
-)
-prior_dist = Gaussian(
-    mean=jnp.array([-1.0, -1.0, 0.0, 0.0, 0.0]),
-    cov=jnp.eye(dim_x),
 )
 
 F = 1e-1 * np.eye(dim_x)
@@ -71,15 +74,17 @@ forward_markov = iterated_forward_markov_smoother(
     log_transition_fn=log_transition_fn,
     log_likelihood_fn=log_likelihood_fn,
     init_posterior=init_posterior,
-    kl_constraint=100,
+    kl_constraint=10,
     init_temperature=1e6,
-    max_iterations=50,
 )
 marginals = std_forward_message(forward_markov)
 
 plt.figure(figsize=(7, 7))
-plt.plot(marginals.mean[:, 0], marginals.mean[:, 1], "-*", label="Smoothed")
-plt.plot(true_states[:, 0], true_states[:, 1], "*", label="True")
+plt.plot(marginals.mean[:, 0], marginals.mean[:, 1], "-", label="Smoothed")
+plt.plot(true_states[:, 0], true_states[:, 1], "--", label="True")
+plt.plot([s1[0], s2[0]], [s1[1], s2[1]], "ks", label="Sensors")
+plt.xlabel("x")
+plt.ylabel("y")
 plt.grid()
 plt.legend()
 plt.show()

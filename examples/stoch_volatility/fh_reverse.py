@@ -1,3 +1,5 @@
+"""Stochastic volatility: iterated reverse smoother with Fourier-Hermite expansion."""
+
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -15,8 +17,8 @@ from varsmooth.objects import ConditionalMomentsModel
 from varsmooth.objects import Gaussian
 from varsmooth.objects import GaussMarkov
 from varsmooth.smoothers.reverse_markov import iterated_reverse_markov_smoother
-from varsmooth.smoothers.utils import std_backward_message
 from varsmooth.smoothers.utils import initialize_reverse_with_forward
+from varsmooth.smoothers.utils import std_backward_message
 
 jax.config.update("jax_platform_name", "cpu")
 jax.config.update("jax_enable_x64", True)

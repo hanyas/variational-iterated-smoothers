@@ -8,7 +8,10 @@ Outputs:
 Run from this directory: python exp2_proximal.py
 """
 
-import lg_common as lg
+if __package__:
+    from . import lg_common as lg
+else:
+    import lg_common as lg
 import numpy as np
 
 CONV_THRESHOLD = 1e-8  # avg. marginal KL->RTS below which an iteration counts as converged

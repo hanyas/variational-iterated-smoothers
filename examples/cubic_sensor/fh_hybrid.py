@@ -1,3 +1,5 @@
+"""Cubic sensor: iterated hybrid (two-filter) smoother with Fourier-Hermite expansion."""
+
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -26,7 +28,7 @@ sigma0 = 0.36  # stationary (prior) variance
 beta = 1.0  # observation gain
 r = 1.0  # observation noise (stddev)
 
-num_steps = 4096  # number of observations
+num_steps = 1024  # number of observations
 dim_x, dim_y = 1, 1
 
 rng = np.random.RandomState(23)
@@ -51,7 +53,7 @@ F = 1e-1 * np.eye(dim_x)
 d = np.zeros((dim_x,))
 Sigma = 1.0 * np.eye(dim_x)
 
-init_fwd_posterior = GaussMarkov(
+init_forward_posterior = GaussMarkov(
     marginal=prior_dist,
     kernels=AffineGaussian(
         F=np.repeat([F], num_steps, axis=0),
@@ -59,7 +61,7 @@ init_fwd_posterior = GaussMarkov(
         Sigma=np.repeat([Sigma], num_steps, axis=0),
     ),
 )
-init_rvs_posterior = initialize_reverse_with_forward(init_fwd_posterior)
+init_reverse_posterior = initialize_reverse_with_forward(init_forward_posterior)
 
 log_prior_fn = lambda q: get_log_prior(prior_dist, q, quadratize)
 log_transition_fn = lambda q, p: get_log_transition(transition_model, q, p, quadratize)
@@ -70,10 +72,10 @@ marginals = iterated_hybrid_markov_smoother(
     log_prior_fn=log_prior_fn,
     log_transition_fn=log_transition_fn,
     log_likelihood_fn=log_likelihood_fn,
-    init_forward_posterior=init_fwd_posterior,
-    init_reverse_posterior=init_rvs_posterior,
+    init_forward_posterior=init_forward_posterior,
+    init_reverse_posterior=init_reverse_posterior,
     kl_constraint=10,
-    init_temperature=1e12,
+    init_temperature=1e6,
 )
 
 ts = np.arange(num_steps + 1)

@@ -5,11 +5,12 @@ from jax import numpy as jnp
 
 from varsmooth.smoothers.utils import _run_iterations
 from varsmooth.smoothers.utils import free_energy
+from varsmooth.smoothers.utils import get_reverse_kernel
 from varsmooth.smoothers.utils import line_search
 from varsmooth.smoothers.utils import statistical_expansion
 
 
-def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
+def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn, reverse=False):
     """Build a direction's smoother suite from its message-passing primitives.
 
     Args:
@@ -24,6 +25,8 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         kl_fn: Callable
             kl_between_reverse_gauss_markovs (reverse) or
             kl_between_forward_gauss_markovs (forward).
+        reverse: bool
+            Whether the reference stores backward conditional kernels.
 
     Returns:
         single_pass_smoother: Callable
@@ -35,6 +38,25 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
         iterated_smoother: Callable
             The full iterated KL-constrained smoother.
     """
+
+    def expansion_kernels(reference, marginals):
+        """Supply forward kernels to the statistical expansion.
+
+        Args:
+            reference: GaussMarkov
+                Reference posterior in this suite's direction.
+            marginals: Gaussian
+                Its time-ordered state marginals.
+
+        Returns:
+            kernels: AffineGaussian
+                Conditional kernels from x_k to x_{k+1}.
+        """
+        if not reverse:
+            return reference.kernels
+        previous = jax.tree.map(lambda x: x[:-1], marginals)
+        following = jax.tree.map(lambda x: x[1:], marginals)
+        return jax.vmap(get_reverse_kernel)(following, reference.kernels, previous)
 
     def single_pass_smoother(
         observations,
@@ -72,7 +94,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
             log_prior_fn,
             log_transition_fn,
             log_likelihood_fn,
-            reference_posterior.kernels,
+            expansion_kernels(reference_posterior, marginals),
             marginals,
         )
         damping = temperature / (1.0 + temperature)
@@ -269,12 +291,13 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
 
         def single_iteration(reference, iteration_idx):
             marginals = std_marginal_fn(reference)
+            kernels = expansion_kernels(reference, marginals)
             log_prior, log_transition, log_likelihood = statistical_expansion(
                 observations,
                 log_prior_fn,
                 log_transition_fn,
                 log_likelihood_fn,
-                reference.kernels,
+                kernels,
                 marginals,
             )
 
@@ -381,7 +404,7 @@ def make_smoother_suite(log_message_fn, std_marginal_fn, kl_fn):
                 log_transition,
                 log_likelihood,
                 marginals,
-                reference.kernels,
+                kernels,
             )
 
             def _log_feasible(_):

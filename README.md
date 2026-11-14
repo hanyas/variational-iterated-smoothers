@@ -1,6 +1,6 @@
 # Recursive Entropic Variational Inference
 
-Implements the approximate inference algorithms from the paper [Recursive Entropic Variational Inference for Nonlinear State-Space Models](https://arxiv.org/abs/2511.15409).
+Implements the approximate inference algorithms from the paper [Recursive Entropic Variational Inference for Nonlinear State-Space Models](https://arxiv.org/abs/2511.15409), published in Transactions on Machine Learning Research.
 
 `varsmooth` performs iterated Gaussian smoothing in nonlinear, non-Gaussian state-space models. Inference is cast as a sequence of entropic trust-region (KL-constrained) updates over a Gauss–Markov posterior, with the model expanded through generalized statistical linear regression or Fourier–Hermite moment matching. See the scripts in `examples/` for demonstrations.
 
@@ -42,7 +42,7 @@ likelihood = AdditiveGaussianModel(lambda x: H @ x, Gaussian(np.zeros(dim), 0.1 
 observations = np.zeros((num_steps, dim))  # replace with your data
 
 # initial forward Gauss-Markov posterior: a root marginal plus num_steps kernels
-init = GaussMarkov(
+init_markov = GaussMarkov(
     marginal=prior,
     kernels=AffineGaussian(
         np.repeat([0.1 * np.eye(dim)], num_steps, axis=0),
@@ -57,8 +57,17 @@ log_transition_fn = lambda q, _: get_log_transition(transition, q, linearize)
 log_likelihood_fn = lambda y, q: get_log_likelihood(y, likelihood, q, linearize)
 
 posterior = iterated_forward_markov_smoother(
-    observations, log_prior_fn, log_transition_fn, log_likelihood_fn,
-    init, kl_constraint=1.0, verbose=False,
+    observations=observations,
+    log_prior_fn=log_prior_fn,
+    log_transition_fn=log_transition_fn,
+    log_likelihood_fn=log_likelihood_fn,
+    init_posterior=init_markov,
+    kl_constraint=1.0,
+    init_temperature=1e12,
+    min_temperature=1e-12,
+    max_iterations=1000,
+    return_history=False,
+    verbose=True,
 )
 marginals = std_forward_message(posterior)  # Gaussian marginals over x_0 .. x_T
 ```
@@ -83,6 +92,7 @@ Single-run demonstrations live under `examples/`, one directory per model family
 - `bearing_only` — nonlinear coordinated-turn (bearings-only) tracking.
 - `cubic_sensor` — scalar AR(1) state observed through a cubic sensor (Katayama, 2013).
 - `stoch_volatility` — univariate stochastic-volatility model.
+- `differential_drive` — five-dimensional controlled robot with pose observations (Courts et al., 2021).
 
 Each script selects a smoother and an approximation: the prefix is `pl_` (posterior linearization) or `fh_` (Fourier–Hermite), and the suffix is `_forward`, `_reverse`, or `_hybrid`. Available combinations vary by model. For example:
 
@@ -91,19 +101,22 @@ python examples/linear_gaussian/fh_hybrid.py
 python examples/bearing_only/pl_reverse.py
 ```
 
+The scalar models use Gauss–Hermite rules; the five-dimensional models use third-degree cubature, since Gauss–Hermite grows exponentially with the joint state dimension. The differential-drive scripts also show how a time-varying transition (here, per-step wheel forces) is handled: map the unbatched `quadratize_log_transition` over the controls instead of calling the batched `get_log_transition`.
+
 ## Citation
 
 If you find this code useful, please cite the paper
 
 ```bib
-@article{abdulsamad2025recursive,
+@article{abdulsamad2026recursive,
   title = {Recursive Entropic Variational Inference for Nonlinear State-Space Models},
   author = {Hany Abdulsamad and {\'A}ngel F. Garc{\'i}a-Fern{\'a}ndez and Simo S{\"a}rkk{\"a}},
-  journal = {arXiv preprint arXiv:2511.15409},
-  year = {2025},
+  journal = {Transactions on Machine Learning Research},
+  year = {2026},
 }
 ```
 
 ## Credit
 
 This project uses code snippets from [sqrt-parallel-smoothers](https://github.com/EEA-sensors/sqrt-parallel-smoothers).
+This project uses code adapted from [BayesNewton](https://github.com/AaltoML/BayesNewton).

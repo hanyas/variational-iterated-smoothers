@@ -10,7 +10,10 @@ Run from this directory: python exp2_sweep.py
 
 import jax
 import numpy as np
-import sv_common as sv
+if __package__:
+    from . import sv_common as sv
+else:
+    import sv_common as sv
 
 METHODS = ["GSLR", "FH"]
 

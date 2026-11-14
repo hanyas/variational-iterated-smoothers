@@ -7,7 +7,10 @@ Outputs:
 Run from this directory: python exp3_interpolation.py
 """
 
-import lg_common as lg
+if __package__:
+    from . import lg_common as lg
+else:
+    import lg_common as lg
 import numpy as np
 
 from varsmooth.smoothers.utils import std_forward_message

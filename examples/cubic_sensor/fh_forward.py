@@ -1,3 +1,5 @@
+"""Cubic sensor: iterated forward smoother with Fourier-Hermite expansion."""
+
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt

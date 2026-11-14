@@ -9,7 +9,10 @@ Run from this directory: python exp1_comparison.py
 
 import jax
 import numpy as np
-import sv_common as sv
+if __package__:
+    from . import sv_common as sv
+else:
+    import sv_common as sv
 
 
 def fit(system, ys, num_steps, kl_constraint, max_iter):
