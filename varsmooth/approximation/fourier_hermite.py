@@ -6,7 +6,7 @@ from jax import Array
 from jax import numpy as jnp
 
 from varsmooth.objects import AdditiveGaussianModel
-from varsmooth.objects import GaussMarkov
+from varsmooth.objects import AffineGaussian
 from varsmooth.objects import Gaussian
 from varsmooth.objects import LogLikelihood
 from varsmooth.objects import LogPrior
@@ -36,17 +36,17 @@ def get_log_prior(
     return LogPrior(L, l, nu)
 
 
-@partial(jax.vmap, in_axes=(None, 0, 0, None))
-def get_log_transition(
-    f: AdditiveGaussianModel, marginal: Gaussian, kernel: GaussMarkov, method: Callable
+def quadratize_log_transition(
+    f: AdditiveGaussianModel, marginal: Gaussian, kernel: AffineGaussian, method: Callable
 ) -> LogTransition:
-    """Quadratize the log-transition under the joint smoothing posterior.
+    """Quadratize one log-transition under the joint smoothing posterior.
 
     Forms the joint expansion point over z = (x_{k+1}, x_k) implied by the
     marginal over x_k and the affine-Gaussian kernel, then quadratizes the
     transition log-density f.log_prob(x_{k+1}, x_k) and slices the result into
-    the LogTransition blocks. Applied per transition via jax.vmap over the (T,)
-    batches of marginal and kernel.
+    the LogTransition blocks. Unbatched so that a time-varying model, e.g. one
+    driven by control inputs, can be mapped over with its own per-step inputs;
+    get_log_transition is the batched version for a shared model.
 
     Args:
         f: AdditiveGaussianModel
@@ -86,6 +86,32 @@ def get_log_transition(
         c2=c[dim:],
         kappa=kappa,
     )
+
+
+@partial(jax.vmap, in_axes=(None, 0, 0, None))
+def get_log_transition(
+    f: AdditiveGaussianModel, marginal: Gaussian, kernel: AffineGaussian, method: Callable
+) -> LogTransition:
+    """Quadratize every log-transition of a shared, time-invariant model.
+
+    Applies quadratize_log_transition per transition via jax.vmap over the
+    (T,) batches of marginal and kernel.
+
+    Args:
+        f: AdditiveGaussianModel
+            Transition model shared by all transitions.
+        marginal: Gaussian
+            Marginals over x_0..x_{T-1} of leading shape (T,).
+        kernel: AffineGaussian
+            Kernels mapping x_k to x_{k+1} of leading shape (T,).
+        method: Callable
+            Quadratization routine (logpdf, q) -> (C, c, kappa).
+
+    Returns:
+        LogTransition
+            The quadratized transitions of leading shape (T,).
+    """
+    return quadratize_log_transition(f, marginal, kernel, method)
 
 
 @partial(jax.vmap, in_axes=(0, None, 0, None))
